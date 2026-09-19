@@ -2,6 +2,18 @@
   "schema_version": 2,
   "entries": [
     {
+      "version": "4.1.1",
+      "date": "2026-09-19",
+      "headline": "Release notes to follow",
+      "summary": "This release went out while the release-notes writer was away. The pull request that made it says what changed.",
+      "highlights": [
+        {
+          "text": "Read the pull request for this release to see what changed",
+          "areas": ["general"]
+        }
+      ]
+    },
+    {
       "version": "4.1.0",
       "date": "2026-09-12",
       "headline": "Plan in conversation and choose run context",
