@@ -267,6 +267,16 @@
       "title": "Ticket"
     },
     {
+      "path": "/studio",
+      "capability": null,
+      "title": "Studio"
+    },
+    {
+      "path": "/studio/:area",
+      "capability": null,
+      "title": "Studio · Section"
+    },
+    {
       "path": "/settings",
       "capability": null,
       "title": "Settings"
@@ -295,6 +305,26 @@
       "path": "/settings/news",
       "capability": null,
       "title": "Settings · Paper"
+    },
+    {
+      "path": "/settings/profile",
+      "capability": null,
+      "title": "Settings · Profile"
+    },
+    {
+      "path": "/settings/models",
+      "capability": null,
+      "title": "Settings · Models"
+    },
+    {
+      "path": "/settings/voice",
+      "capability": null,
+      "title": "Settings · Voice"
+    },
+    {
+      "path": "/settings/brand",
+      "capability": null,
+      "title": "Settings · Brand"
     },
     {
       "path": "/settings/themes",
