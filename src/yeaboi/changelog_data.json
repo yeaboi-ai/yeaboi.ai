@@ -2,6 +2,18 @@
   "schema_version": 2,
   "entries": [
     {
+      "version": "4.1.1",
+      "date": "2026-09-19",
+      "headline": "Slack polling keeps its recent messages",
+      "summary": "Fixed a bug where the Slack ledger was pruning recent messages when the poll clock and wall clock diverged. Slack standups and digests now retain data consistently.",
+      "highlights": [
+        {
+          "text": "Slack polling no longer deletes recent messages due to clock mismatch",
+          "areas": ["standup"]
+        }
+      ]
+    },
+    {
       "version": "4.1.0",
       "date": "2026-09-12",
       "headline": "Plan in conversation and choose run context",
