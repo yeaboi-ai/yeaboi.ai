@@ -4,12 +4,12 @@
     {
       "version": "4.1.1",
       "date": "2026-09-19",
-      "headline": "Release notes to follow",
-      "summary": "This release went out while the release-notes writer was away. The pull request that made it says what changed.",
+      "headline": "Slack polling keeps its recent messages",
+      "summary": "Fixed a bug where the Slack ledger was pruning recent messages when the poll clock and wall clock diverged. Slack standups and digests now retain data consistently.",
       "highlights": [
         {
-          "text": "Read the pull request for this release to see what changed",
-          "areas": ["general"]
+          "text": "Slack polling no longer deletes recent messages due to clock mismatch",
+          "areas": ["standup"]
         }
       ]
     },
