@@ -2,8 +2,9 @@
 
 A :class:`ContextScope` names the producer modes a run may read (``sources``),
 the timeframe (``window``), the project labels and tags the sessions must
-carry, and a per-source "newest N" cap (``limits``). ``None`` is today's
-unscoped behaviour byte-for-byte; every narrowing is opt-in.
+carry, a per-source "newest N" cap (``limits``), and the sessions pinned by
+name (``sessions``) — those are always in scope, whatever the rest says.
+``None`` is today's unscoped behaviour byte-for-byte; every narrowing is opt-in.
 
 Two twins of the same value: a JSON dict (HTTP bodies, ``ScrumState``) and a
 one-line spec string (CLI, MCP). Both round-trip through this module. Nothing
@@ -16,7 +17,7 @@ import logging
 import re
 import shlex
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,14 @@ WINDOW_LABELS: dict[str, str] = {
     "year": "Last year",
     "custom": "Custom range",
 }
+
+#: Source token → the ``mode`` its label rows (and a pinned session) carry.
+SOURCE_MODES: dict[str, str] = {name: ("planning" if name == "plan" else name) for name in SOURCES}
+#: The inverse: a session's mode → the source it is read under.
+MODE_SOURCES: dict[str, str] = {mode: source for source, mode in SOURCE_MODES.items()}
+
+#: The most sessions a scope pins by name.
+MAX_PINNED_SESSIONS = 50
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SPRINTS = re.compile(r"^(\d+)\s*sprints?$")
@@ -144,6 +153,51 @@ class Window:
 
 
 @dataclass(frozen=True)
+class SessionRef:
+    """One session pinned by name: always in scope, whatever the window or labels say.
+
+    ``mode`` is the session's own mode (``planning``, ``standup``, …); the
+    history stores key a run by ``run_id`` (a performance row's carries a
+    colon, ``1on1:12``), the session stores by ``session_id``.
+    """
+
+    mode: str
+    session_id: str = ""
+    run_id: str = ""
+
+    def __post_init__(self) -> None:
+        if self.mode not in MODE_SOURCES:
+            raise ValueError(f"unknown session mode {self.mode!r} — one of {', '.join(MODE_SOURCES)}")
+        if not (self.session_id or self.run_id):
+            raise ValueError("a pinned session needs a session_id or a run_id")
+
+    @property
+    def source(self) -> str:
+        return MODE_SOURCES[self.mode]
+
+    @property
+    def key(self) -> str:
+        """The id the resolver reads the run under — the store row's own id first."""
+        return self.run_id or self.session_id
+
+    def to_dict(self) -> dict:
+        return {"mode": self.mode, "session_id": self.session_id, "run_id": self.run_id}
+
+    def to_spec(self) -> str:
+        return f"{self.mode}:{self.session_id}:{self.run_id}" if self.run_id else f"{self.mode}:{self.session_id}"
+
+    @classmethod
+    def from_spec(cls, text: str) -> SessionRef:
+        """``mode:session_id[:run_id]`` — split twice from the left, so a run id keeps its colons."""
+        parts = text.strip().split(":", 2)
+        if len(parts) < 2:
+            raise ValueError(f"a pinned session is mode:session_id[:run_id], got {text!r}")
+        mode, session_id = parts[0].strip().lower(), parts[1].strip()
+        run_id = parts[2].strip() if len(parts) == 3 else ""
+        return cls(mode=mode, session_id=session_id, run_id=run_id)
+
+
+@dataclass(frozen=True)
 class ContextScope:
     """The sessions a run may read. Every field narrows; the default narrows nothing."""
 
@@ -152,18 +206,27 @@ class ContextScope:
     projects: tuple[str, ...] = ()  # project labels, any of (OR)
     tags: tuple[str, ...] = ()  # tags, all of (AND)
     limits: tuple[tuple[str, int], ...] = ()  # (source, newest N) caps
+    sessions: tuple[SessionRef, ...] = ()  # pinned by name; always read
 
     def wants(self, source: str) -> bool:
-        return self.sources is None or source in self.sources
+        return self.sources is None or source in self.sources or bool(self.pinned(source))
+
+    def pinned(self, source: str) -> tuple[str, ...]:
+        """The keys pinned under ``source``, in pin order."""
+        return tuple(dict.fromkeys(ref.key for ref in self.sessions if ref.source == source))
 
     @property
     def incognito(self) -> bool:
-        return self.sources is not None and not self.sources
+        return self.sources is not None and not self.sources and not self.sessions
 
     @property
     def narrows(self) -> bool:
         """Whether resolving this scope can change any read at all."""
-        return self.sources is not None or self.window.bounded or bool(self.projects or self.tags or self.limits)
+        return (
+            self.sources is not None
+            or self.window.bounded
+            or bool(self.projects or self.tags or self.limits or self.sessions)
+        )
 
     def limit_for(self, source: str) -> int:
         for name, cap in self.limits:
@@ -178,6 +241,7 @@ class ContextScope:
             "projects": list(self.projects),
             "tags": list(self.tags),
             "limits": {name: cap for name, cap in self.limits},
+            "sessions": [ref.to_dict() for ref in self.sessions],
         }
 
     @classmethod
@@ -224,6 +288,7 @@ class ContextScope:
             projects=_clean_strings(data.get("projects")),
             tags=_clean_strings(data.get("tags")),
             limits=tuple(sorted(limits, key=lambda pair: SOURCES.index(pair[0]))),
+            sessions=_clean_sessions(data.get("sessions")),
         )
 
     def to_spec(self) -> str:
@@ -233,6 +298,9 @@ class ContextScope:
         if self.sources is None:
             head = "all"
             caps = ",".join(f"{name}:{cap}" for name, cap in self.limits if cap > 0)
+        elif not self.sources:
+            head = "none"
+            caps = ""
         else:
             head = ",".join(
                 f"{name}:{self.limit_for(name)}" if self.limit_for(name) else name
@@ -250,7 +318,41 @@ class ContextScope:
             parts.append("project=" + ",".join(_quote(label) for label in self.projects))
         if self.tags:
             parts.append("tags=" + ",".join(_quote(tag) for tag in self.tags))
+        if self.sessions:
+            parts.append("session=" + ",".join(ref.to_spec() for ref in self.sessions))
         return " ".join(parts)
+
+
+def _clean_sessions(value: object) -> tuple[SessionRef, ...]:
+    """The pins a dict carries, read tolerantly: a bad entry is dropped with a warning."""
+    if not isinstance(value, (list, tuple)):
+        return ()
+    out: dict[tuple[str, str], SessionRef] = {}
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        try:
+            ref = SessionRef(
+                mode=str(item.get("mode", "") or "").strip().lower(),
+                session_id=str(item.get("session_id", "") or "").strip(),
+                run_id=str(item.get("run_id", "") or "").strip(),
+            )
+        except ValueError as exc:
+            logger.warning("ContextScope.from_dict: dropping pinned session: %s", exc)
+            continue
+        out.setdefault((ref.mode, ref.key), ref)
+        if len(out) >= MAX_PINNED_SESSIONS:
+            break
+    return tuple(out.values())
+
+
+def pin_sessions(scope: ContextScope | None, refs: Iterable[SessionRef]) -> ContextScope:
+    """``scope`` with ``refs`` pinned (an absent scope becomes one that pins them alone)."""
+    base = scope or ContextScope()
+    merged: dict[tuple[str, str], SessionRef] = {(r.mode, r.key): r for r in base.sessions}
+    for ref in refs:
+        merged.setdefault((ref.mode, ref.key), ref)
+    return replace(base, sessions=tuple(merged.values())[:MAX_PINNED_SESSIONS])
 
 
 def _clean_strings(value: object) -> tuple[str, ...]:
@@ -309,9 +411,10 @@ def parse_context_spec(spec: str) -> ContextScope | None:
     """Parse the one-line grammar::
 
         SPEC    := "" | inherit | none | CLAUSE (WS CLAUSE)*
-        CLAUSE  := SOURCES ["@" WINDOW] | window=WINDOW | project=LABELS | tags=TAGS
-        SOURCES := all | TOKEN ("," TOKEN)*        TOKEN := SOURCE [":" N]
+        CLAUSE  := SOURCES ["@" WINDOW] | window=WINDOW | project=LABELS | tags=TAGS | session=PINS
+        SOURCES := all | none | TOKEN ("," TOKEN)*  TOKEN := SOURCE [":" N]
         WINDOW  := all | N sprint(s) | month | quarter | year | DATE ".." [DATE] | DATE
+        PINS    := PIN ("," PIN)*                   PIN := MODE ":" SESSION_ID [":" RUN_ID]
 
     ``""``/``inherit`` → ``None`` (the caller's default applies); ``none`` is
     incognito. An unknown source raises ``ValueError`` naming the valid ones —
@@ -333,16 +436,26 @@ def parse_context_spec(spec: str) -> ContextScope | None:
     projects: list[str] = []
     tags: list[str] = []
     limits: dict[str, int] = {}
+    pins: list[SessionRef] = []
+    explicit_none = False
     for clause in clauses:
         key, sep, value = clause.partition("=")
-        if sep and key.lower() in ("window", "project", "projects", "tag", "tags"):
+        if sep and key.lower() in ("window", "project", "projects", "tag", "tags", "session", "sessions"):
             word = key.lower()
             if word == "window":
                 window = _parse_window(value)
             elif word.startswith("project"):
                 projects.extend(_split_labels(value))
+            elif word.startswith("session"):
+                pins.extend(SessionRef.from_spec(part) for part in _split_labels(value))
             else:
                 tags.extend(_split_labels(value))
+            continue
+        if clause.partition("@")[0].strip().lower() == "none":
+            explicit_none = True
+            saw_sources = True
+            if "@" in clause:
+                window = _parse_window(clause.partition("@")[2])
             continue
         head, at, tail = clause.partition("@")
         if at:
@@ -355,13 +468,17 @@ def parse_context_spec(spec: str) -> ContextScope | None:
             explicit.update(parsed)
         limits.update(caps)
     sources = None if (read_all or not saw_sources) else explicit
+    if explicit_none and not explicit:
+        sources = set()
     scope_sources = None if sources is None else frozenset(sources)
+    unique: dict[tuple[str, str], SessionRef] = {(r.mode, r.key): r for r in pins}
     return ContextScope(
         sources=scope_sources,
         window=window or Window(),
         projects=tuple(dict.fromkeys(projects)),
         tags=tuple(dict.fromkeys(tags)),
         limits=tuple(sorted(limits.items(), key=lambda pair: SOURCES.index(pair[0]))),
+        sessions=tuple(unique.values())[:MAX_PINNED_SESSIONS],
     )
 
 

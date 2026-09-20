@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 MAX_PROJECT_LABEL = 80
 MAX_TAGS = 20
+MAX_INTEGRATIONS = 20
 
 
 def read_context(payload: Mapping) -> tuple[ContextScope | None, str, tuple[str, ...]]:
@@ -67,3 +68,32 @@ def context_kwargs(payload: Mapping) -> dict:
     if tags:
         out["tags"] = tags
     return out
+
+
+def known_integrations() -> tuple[str, ...]:
+    """Every connection key a plan may name — the catalog's and the legacy entries'."""
+    from yeaboi.connectors import registry
+
+    return tuple(dict.fromkeys(c.key for c in (*registry.all_connectors(), *registry.legacy_entries())))
+
+
+def read_integrations(payload: Mapping) -> list[str] | None:
+    """The ``integrations`` a run body names, or None when the key is absent or null.
+
+    A list is the only integrations the plan may consult, ``[]`` is none;
+    every key must be a known connection (connected or not), else 400.
+    """
+    if "integrations" not in payload or payload.get("integrations") is None:
+        return None
+    raw = payload["integrations"]
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        raise HTTPError(400, "integrations must be a list of connection keys")
+    if len(raw) > MAX_INTEGRATIONS:
+        raise HTTPError(400, f"at most {MAX_INTEGRATIONS} integrations")
+    known = known_integrations()
+    keys = list(dict.fromkeys(item.strip().lower() for item in raw if item.strip()))
+    for key in keys:
+        if key not in known:
+            raise HTTPError(400, f"unknown integration {key!r} — one of {', '.join(known)}")
+    logger.info("integrations body: n=%d", len(keys))
+    return keys

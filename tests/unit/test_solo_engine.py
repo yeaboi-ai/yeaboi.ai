@@ -485,7 +485,14 @@ class TestContextScope:
         assert rows and rows[0].project == "Apollo"
         assert {"q3", "mode:review", "world:solo"} <= set(rows[0].tags)
         assert any(tag.startswith("week:") for tag in rows[0].tags)
-        assert rows[0].scope == {"sources": [], "window": {"kind": "all"}, "projects": [], "tags": [], "limits": {}}
+        assert rows[0].scope == {
+            "sources": [],
+            "window": {"kind": "all"},
+            "projects": [],
+            "tags": [],
+            "limits": {},
+            "sessions": [],
+        }
 
     def test_an_unscoped_review_reads_as_before(self, monkeypatch, tmp_path):
         db = _seed(tmp_path)

@@ -21,7 +21,8 @@ import os
 import re
 from collections.abc import Callable
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END
 
@@ -90,7 +91,7 @@ from yeaboi.prompts.system import get_system_prompt  # noqa: E402 — direct sub
 from yeaboi.prompts.task_decomposer import get_task_decomposer_prompt
 from yeaboi.timeparse import parse_date, parse_datetime
 from yeaboi.tools import detect_platform
-from yeaboi.tools.risk import high_risk_tool_names
+from yeaboi.tools.risk import allowed_tools, high_risk_tool_names, integration_of, tool_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +428,30 @@ def _attach_chat_images(state: ScrumState, all_messages: list[BaseMessage]) -> l
     return all_messages
 
 
+def _attach_chat_context(state: ScrumState, all_messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Append the turn's rendered refs and files to the latest human message, at invoke time only.
+
+    Same rule as the images: state["messages"] keeps the person's own words,
+    state["chat_context"] carries the text agent/chat_refs.py rendered, and the
+    two meet only in the list handed to the LLM. Runs before the images so the
+    content is still a string here.
+    """
+    block = list(state.get("chat_context") or [])
+    if not block:
+        return all_messages
+    for i in range(len(all_messages) - 1, -1, -1):
+        msg = all_messages[i]
+        if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
+            content = msg.content + "\n\n---\nReferences and files:\n" + "\n\n".join(block)
+            logger.info("chat: attaching %d reference/file paragraph(s) to the latest user message", len(block))
+            return [
+                *all_messages[:i],
+                HumanMessage(content=content, additional_kwargs=dict(msg.additional_kwargs)),
+                *all_messages[i + 1 :],
+            ]
+    return all_messages
+
+
 def _trim_history_for_local(messages: list[BaseMessage]) -> list[BaseMessage]:
     """Trim chat history to fit a local model's context window. No-op for cloud.
 
@@ -508,7 +533,9 @@ def make_call_model(tools: list[BaseTool]) -> Callable[[ScrumState], dict[str, l
     # A simple closure is the idiomatic LangGraph pattern for parameterised nodes.
     # The graph wires it as: graph.add_node("agent", make_call_model(tools))
     """
-    _bound_llm = None  # initialised lazily on first call
+    # One binding per allowed-integration set: a plan restricted to some
+    # integrations never sends the other tools' schemas to the model.
+    _bound: dict = {}
     _tools_unsupported = False  # set once a local model rejects tool schemas
 
     def _is_tools_unsupported_error(exc: Exception) -> bool:
@@ -517,22 +544,26 @@ def make_call_model(tools: list[BaseTool]) -> Callable[[ScrumState], dict[str, l
 
     def call_model_with_tools(state: ScrumState) -> dict[str, list[BaseMessage]]:
         """LangGraph node: invoke the LLM with bound tools."""
-        nonlocal _bound_llm, _tools_unsupported
-        if _bound_llm is None and not _tools_unsupported:
+        nonlocal _tools_unsupported
+        allowed = state.get("session_integrations")
+        cache_key = None if allowed is None else frozenset(allowed)
+        if cache_key not in _bound and not _tools_unsupported:
             # bind_tools() returns a new Runnable (RunnableBinding) that wraps
             # the LLM and injects the tool schemas into every API request.
             # Claude reads these schemas to know what tools are available and
             # generates tool_calls when it wants to use one.
-            _bound_llm = get_llm().bind_tools(tools)
-        system_message = SystemMessage(content=get_system_prompt())
+            _bound[cache_key] = get_llm().bind_tools(allowed_tools(tools, allowed))
+        system_message = SystemMessage(content=get_system_prompt(integrations=allowed))
         # Trim BEFORE attaching images: the estimate is text-based, and the
         # latest human message (where images attach) is always kept.
-        all_messages = _attach_chat_images(state, _trim_history_for_local([system_message, *state["messages"]]))
+        all_messages = _attach_chat_images(
+            state, _attach_chat_context(state, _trim_history_for_local([system_message, *state["messages"]]))
+        )
         if _tools_unsupported:
             response = get_llm().invoke(all_messages)
         else:
             try:
-                response = _bound_llm.invoke(all_messages)
+                response = _bound[cache_key].invoke(all_messages)
             except Exception as exc:
                 # Some local models can't call tools — Ollama rejects the whole
                 # request ("… does not support tools"). Degrade to plain chat
@@ -543,7 +574,7 @@ def make_call_model(tools: list[BaseTool]) -> Callable[[ScrumState], dict[str, l
                     raise
                 logger.warning("model does not support tool calling — degrading to plain chat: %s", exc)
                 _tools_unsupported = True
-                _bound_llm = None
+                _bound.clear()
                 response = get_llm().invoke(all_messages)
                 track_usage(response)  # prose chat path — count tokens + local timing
                 _strip_response_think_tags(response)
@@ -556,15 +587,61 @@ def make_call_model(tools: list[BaseTool]) -> Callable[[ScrumState], dict[str, l
                 out_deg: dict = {"messages": [response]}
                 if state.get("chat_images"):
                     out_deg["chat_images"] = []
+                if state.get("chat_context"):
+                    out_deg["chat_context"] = []
                 return out_deg
         track_usage(response)  # covers both the tools-unsupported and bound-LLM invokes above
         _strip_response_think_tags(response)
         out: dict = {"messages": [response]}
         if state.get("chat_images"):
             out["chat_images"] = []  # consumed — clear so later turns don't re-send
+        if state.get("chat_context"):
+            out["chat_context"] = []
         return out
 
     return call_model_with_tools
+
+
+def make_tool_node(tools: list[BaseTool]):
+    """The "tools" node: LangGraph's ToolNode behind a per-plan integration guard.
+
+    A plan restricted to some integrations never sees the other tools' schemas
+    (make_call_model), but a model can still name one; such a call is answered
+    with a refusing ToolMessage and the allowed calls run as usual.
+    # See docs: "Tools" — tool types and ToolNode
+    """
+    from langgraph.prebuilt import ToolNode
+
+    node = ToolNode(list(tools), handle_tool_errors=True)
+
+    def guarded_tools(state: ScrumState, config: RunnableConfig) -> dict:
+        allowed = state.get("session_integrations")
+        messages = state["messages"]
+        last = messages[-1] if messages else None
+        calls = list(getattr(last, "tool_calls", None) or [])
+        refused = [call for call in calls if not tool_allowed(call["name"], allowed)]
+        if not refused:
+            return node.invoke(state, config)
+        out: list[BaseMessage] = []
+        for call in refused:
+            logger.warning(
+                "tools: refused %s — %s is not enabled for this plan", call["name"], integration_of(call["name"])
+            )
+            out.append(
+                ToolMessage(
+                    content=f"{integration_of(call['name'])} is not enabled for this plan",
+                    tool_call_id=call.get("id", ""),
+                    name=call["name"],
+                )
+            )
+        kept = [call for call in calls if tool_allowed(call["name"], allowed)]
+        if kept:
+            trimmed = AIMessage(content=last.content, tool_calls=kept, id=getattr(last, "id", None))
+            result = node.invoke({**state, "messages": [*messages[:-1], trimmed]}, config)
+            out.extend(result.get("messages", []))
+        return {"messages": out}
+
+    return guarded_tools
 
 
 def _strip_response_think_tags(response) -> None:
@@ -615,7 +692,7 @@ def call_model(state: ScrumState) -> dict[str, list[BaseMessage]]:
         in a list. The add_messages reducer on ScrumState will append this
         to the existing conversation history.
     """
-    system_message = SystemMessage(content=get_system_prompt())
+    system_message = SystemMessage(content=get_system_prompt(integrations=state.get("session_integrations")))
 
     # Prepend system prompt to conversation history for each call.
     # The system message is NOT stored in state — it's injected fresh
@@ -623,7 +700,9 @@ def call_model(state: ScrumState) -> dict[str, list[BaseMessage]]:
     # Pasted screenshots (chat_images) are attached to the latest human
     # message here, at invoke time only — stored history stays text-only.
     # Local models get their history trimmed to the context window first.
-    all_messages = _attach_chat_images(state, _trim_history_for_local([system_message, *state["messages"]]))
+    all_messages = _attach_chat_images(
+        state, _attach_chat_context(state, _trim_history_for_local([system_message, *state["messages"]]))
+    )
 
     response = get_llm().invoke(all_messages)
     track_usage(response)  # prose chat path — count tokens + local timing
@@ -635,6 +714,8 @@ def call_model(state: ScrumState) -> dict[str, list[BaseMessage]]:
     out: dict = {"messages": [response]}
     if state.get("chat_images"):
         out["chat_images"] = []  # consumed — clear so later turns don't re-send
+    if state.get("chat_context"):
+        out["chat_context"] = []
     return out
 
 
@@ -2524,6 +2605,15 @@ def _fetch_notion_context(
         return None, {"name": "Notion", "status": "error", "detail": str(e)[:80]}
 
 
+def _repo_integration(questionnaire: QuestionnaireState) -> str:
+    """The connection key the Q17 repository scan would read through; ``""`` for a local path or none."""
+    url = questionnaire.answers.get(17, "") or ""
+    if not url or url == QUESTION_DEFAULTS.get(17) or "://" not in url:
+        return ""
+    platform = detect_platform(url) or questionnaire.answers.get(16, "")
+    return {"GitHub": "github", "Azure DevOps": "azdevops"}.get(platform, "")
+
+
 def _scan_repo_context(questionnaire: QuestionnaireState) -> tuple[str | None, dict]:
     """Scan the repo referenced in Q17 and return a combined context string + status.
 
@@ -4403,7 +4493,12 @@ def project_intake(state: ScrumState) -> dict:
             # ── Tracker choice prompt when two or more are configured ──
             from yeaboi import trackers as _trackers
 
-            _configured_trackers = _trackers.configured()
+            # Only the trackers this plan may consult are offered; when the plan's
+            # integrations leave exactly one, it is the preference without asking.
+            _configured_trackers = [k for k in _trackers.configured() if _wants_integration(state, k)]
+            if len(_configured_trackers) == 1 and not qs._preferred_tracker and state.get("session_integrations"):
+                qs._preferred_tracker = _configured_trackers[0]
+                logger.info("Tracker preference set by the plan's integrations: %s", qs._preferred_tracker)
             if len(_configured_trackers) >= 2 and not qs._preferred_tracker:
                 qs._awaiting_tracker_choice = True
                 # Use Q1 slot with follow-up choices so the TUI accordion renders
@@ -4423,7 +4518,7 @@ def project_intake(state: ScrumState) -> dict:
                     ],
                 }
 
-            if _is_tracker_configured():
+            if _configured_trackers and _is_tracker_configured():
                 # Fire both tracker calls concurrently — they are independent HTTP
                 # requests and running them in parallel halves the wait time.
                 # See docs: "Scrum Standards" — capacity planning
@@ -6493,6 +6588,16 @@ def _gather_performance_summary(selection=None) -> str:
         return ""
 
 
+def _wants_integration(state, key: str) -> bool:
+    """Whether this plan may consult the ``key`` connection (absent ``session_integrations`` = all on)."""
+    allowed = state.get("session_integrations")
+    return allowed is None or key in set(allowed)
+
+
+def _skipped_source(name: str) -> dict:
+    return {"name": name, "status": "skipped", "detail": "not enabled for this plan"}
+
+
 def _wants_dep(state, source: str) -> bool:
     """Whether this run's context scope allows ``source`` (absent key = all on).
 
@@ -6628,9 +6733,12 @@ def project_analyzer(state: ScrumState) -> dict:
     # from the current questionnaire answers.
     # See docs: "Project Intake Questionnaire" — smart intake
     _stashed_repo_context = getattr(questionnaire, "_repo_context", "")
+    repo_key = _repo_integration(questionnaire)
     if _stashed_repo_context:
         repo_context = _stashed_repo_context
         repo_status = {"name": "Repository", "status": "success", "detail": "reused intake scan"}
+    elif repo_key and not _wants_integration(state, repo_key):
+        repo_context, repo_status = None, _skipped_source("Repository")
     else:
         # _scan_repo_context is kept as the analysis-time scan seam (many
         # integration/golden tests monkeypatch it to skip live scans).
@@ -6648,6 +6756,14 @@ def project_analyzer(state: ScrumState) -> dict:
     # Similar to CLAUDE.md for Claude Code: a free-form markdown file containing URLs,
     # design notes, tech decisions, and anything else the user wants the agent to know.
     user_context, user_status = _load_user_context()
+    # What the person pointed at during intake (@-references, attached files)
+    # reads as project context alongside SCRUM.md.
+    pasted_context = list(state.get("pasted_context") or [])
+    if pasted_context:
+        user_context = "\n\n".join(part for part in (user_context or "", *pasted_context) if part)
+        logger.info(
+            "project_analyzer: %d pasted reference/file paragraph(s) join the user context", len(pasted_context)
+        )
 
     # Search Confluence for docs related to the project name AND fetch any pages
     # linked directly in SCRUM.md (e.g. RunBook URLs). Passing user_context allows
@@ -6657,7 +6773,10 @@ def project_analyzer(state: ScrumState) -> dict:
     logger.debug(
         "CONFLUENCE: passing user_context=%s to _fetch_confluence_context", "present" if user_context else "None"
     )
-    confluence_context, confluence_status = _fetch_confluence_context(questionnaire, user_context=user_context)
+    if _wants_integration(state, "confluence"):
+        confluence_context, confluence_status = _fetch_confluence_context(questionnaire, user_context=user_context)
+    else:
+        confluence_context, confluence_status = None, _skipped_source("Confluence")
     logger.debug(
         "CONFLUENCE: result status=%s detail=%s", confluence_status.get("status"), confluence_status.get("detail")
     )
@@ -6666,7 +6785,10 @@ def project_analyzer(state: ScrumState) -> dict:
     # from URLs in SCRUM.md). Notion is an independent doc source with its own
     # token — graceful (None, status) when it's not configured or no docs found.
     # See docs: "Tools" — read-only tool pattern
-    notion_context, notion_status = _fetch_notion_context(questionnaire, user_context=user_context)
+    if _wants_integration(state, "notion"):
+        notion_context, notion_status = _fetch_notion_context(questionnaire, user_context=user_context)
+    else:
+        notion_context, notion_status = None, _skipped_source("Notion")
     logger.debug("NOTION: result status=%s detail=%s", notion_status.get("status"), notion_status.get("detail"))
 
     # Load team profile for calibration-aware analysis.

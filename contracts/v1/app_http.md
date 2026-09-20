@@ -167,17 +167,17 @@ and a plan started here is one plan everywhere.
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/chat/sessions` | body `{description, intake_mode?: "small_project"\|"smart", solo?: false, analysis_profile_id?, title?, context?, project_label?, tags?}` → 201 with the session view. An absent `intake_mode` is classified from the description. `solo: true` opens a one-person intake (the Solo world). `analysis_profile_id` seeds the team calibration and must name a saved profile (400 otherwise). `context`, `project_label` and `tags` are the three keys every run body takes — see *Context scope and labels*; an absent `context` inherits the scope last used for planning on this machine, like every other run; the plan is labelled with them plus the tags every plan gets (`mode:planning`, `world:…`, the month, `size:…`) |
+| POST | `/api/chat/sessions` | body `{description, intake_mode?: "small_project"\|"smart", solo?: false, analysis_profile_id?, title?, context?, project_label?, tags?, integrations?: [str] \| null, refs?: [ref]}` → 201 with the session view. An absent `intake_mode` is classified from the description. `solo: true` opens a one-person intake (the Solo world). `analysis_profile_id` seeds the team calibration and must name a saved profile (400 otherwise). `context`, `project_label` and `tags` are the three keys every run body takes — see *Context scope and labels*; an absent `context` inherits the scope last used for planning on this machine, like every other run; the plan is labelled with them plus the tags every plan gets (`mode:planning`, `world:…`, the month, `size:…`). `integrations` names the connections this plan may consult (see *Integrations* below); `refs` are read into the intake once, at creation, and the plans and runs among them are pinned on the plan's scope (see *References*) — the first `send` must not repeat them |
 | GET | `/api/chat/sessions` | `?limit=&project_label=&tag=` → `{sessions: [{session_id, title, project_name, project_label, tags, stage, created_at, last_modified, last_node_completed, counts: {features, stories, tasks, sprints}}]}` — every plan, newest first; `limit` defaults to 50 and `0` means every row. `title` is derived, never stored: the user's title, else the analysed project name, else the description's first sentence cut to 60 characters |
 | GET | `/api/chat/commands` | `{commands: [{name, help, availability}]}` — the slash verbs the window runs itself (below) |
 | GET | `/api/chat/sessions/{session_id}` | the session view; 404 when no such conversation is open or stored |
-| POST | `/api/chat/sessions/{session_id}/send` | body `{text, images?: [..]}` → a chunked NDJSON turn; 400 when `text` starts with `/`; 409 while a turn is already running, or while the stage is `pipeline` or `epic` (call `advance`) |
+| POST | `/api/chat/sessions/{session_id}/send` | body `{text, images?: [path], files?: [path], refs?: [ref]}` → a chunked NDJSON turn; 400 when `text` starts with `/`; 409 while a turn is already running, or while the stage is `pipeline` or `epic` (call `advance`) |
 | POST | `/api/chat/sessions/{session_id}/advance` | no body → a chunked NDJSON turn that runs the one step needing no reply: a build stage, or the epic reformat; 409 in any other stage |
-| POST | `/api/chat/sessions/{session_id}/update` | body `{title?, project_label?, tags?, context?}` → `{session_id, title, project_label, tags, context}`. Only the keys present change; `tags` replaces the list; a blank `project_label` clears the label; `context` null or blank clears the scope |
+| POST | `/api/chat/sessions/{session_id}/update` | body `{title?, project_label?, tags?, context?, integrations?}` → `{session_id, title, project_label, tags, context, integrations}`. Only the keys present change; `tags` replaces the list; a blank `project_label` clears the label; `context` null or blank clears the scope, and a `context` object with no `sessions` key keeps the pins the plan already has; `integrations` replaces the list, `null` lifts the restriction |
 | POST | `/api/chat/sessions/{session_id}/delete` | → `{deleted: true, session_id}` — the row, its versions, labels, pasted images and log; 404 when unknown |
 | GET | `/api/chat/sessions/{session_id}/questions` | `{questions: [{number, label, answer, remaining, skipped}], total, completed, derived}` |
 | POST | `/api/chat/sessions/{session_id}/size` | body `{mode: "small_project"\|"smart"}` → `{changed, mode, reopened?}`; 409 in dry-run |
-| POST | `/api/chat/sessions/{session_id}/attachments` | body `{image: base64, mime: "image/png"\|"image/jpeg", index}` → `{path, chip}`; 413 over 4.5 MB |
+| POST | `/api/chat/sessions/{session_id}/attachments` | body `{kind?: "image"\|"text", image?: base64, mime?: "image/png"\|"image/jpeg", name?, text?, index}` → `{path, chip}` (a text file's reply also carries `kind, name, bytes`). `kind` defaults to `image`: `{image, mime, index}` → chip `[image #N]`, 413 over 4.5 MB. `kind: "text"`: `{name, text, index}` → chip `[file #N]`; the name's suffix must be one of `.md .txt .csv .json .log` (400), 413 over 200 KB. An unknown `kind` is a 400 |
 | GET | `/api/chat/sessions/{session_id}/plan` | the plan view (below) |
 | GET | `/api/chat/sessions/{session_id}/plan/versions` | `?section=` → `{versions: [{section, version, created_at}]}` — every accepted snapshot, oldest first |
 | GET | `/api/chat/sessions/{session_id}/plan/versions/{section}/{version}` | `{section, version, created_at, payload}` — one accepted snapshot; 404 when there is none |
@@ -187,6 +187,49 @@ the images to send. Which of them travel is decided from the text, by the
 surviving `[image #N]` chips, so deleting a chip detaches its image here
 exactly as it does in the terminal. A client that posts attachments without
 writing their chips into the text sends no images at all.
+
+**Files.** `files` on `send` is the same convention for the text files the
+attachments route kept: the whole list, in order, and only the paths whose
+`[file #N]` chip survives in the text travel. A path is read only when it is
+one this server returned — under the session's own attachments directory,
+with an allowed suffix — anything else is dropped with a warning, never read.
+Each file's text is inlined for the model (12,000 characters a file, 30,000 a
+turn, head-truncated with a marker) beside the references, below.
+
+**References.** A `ref` is `{kind, label, id?, mode?, source?, subject?, url?}`
+with `kind` one of `plan` (another planning session, `id` its session id),
+`run` (a saved run of any mode in `/api/sessions/recent`: `mode` required,
+`id` the row's `run_id` or `session_id`; `id` absent means that mode's latest
+run), `integration` (an item from `GET /api/references`: `source` and its
+`id` or `subject`), or `link` (`url`, http or https). `refs` on `send` is the
+composer's whole list, in order; the `[ref #N]` chips in the text decide
+which travel, exactly like images. At most 6 a turn, `label` at most 120
+characters; an unknown `kind`, `mode` or `source`, or a bad `url`, is a 400.
+Each travelling ref is resolved here into a short bounded summary (1,500
+characters a ref, 6,000 a turn) the model reads with the turn — a plan's
+name, stage, goals and sprints; a run's title, subtitle, date and labels; an
+integration item's label, detail and url; a link as given, never fetched. A
+target that is gone is not an error: it reads as `(no longer available)`.
+The `plan` and `run` refs are also **pinned** on the plan's context scope
+(`sessions`, see *Context scope and labels*), so the plan keeps reading them
+whatever its window says. `refs` on create are read into the intake the
+same way, once. The prose `References:` block earlier desktops appended to
+the description is retired: send `refs` instead.
+
+**Integrations.** `integrations` on create and update is the list of
+connection keys (`jira`, `github`, `notion`, …, any key `GET /api/connections`
+lists, connected or not — an unknown one is a 400, at most 20) this plan may
+consult. The session view and the update reply carry it back: a list is the
+restriction, `[]` is none, `null` is unrestricted — a plan from before the
+key, or a client that never sent one, reads as today. Enforced four ways:
+the agent is bound only the allowed tools' schemas, a tool call the model
+still names outside them is answered with a refusal instead of running, the
+analyzer's own repository, Confluence and Notion reads are skipped for a
+disabled integration (`context_sources` records `skipped`), the intake offers
+only the enabled trackers for velocity and sprint data (one left is chosen
+without asking, none skips the read), and the system prompt names the enabled
+set. Not covered: `plan_sync` and `plan_publish`
+destinations, which are explicit actions on their own routes.
 
 `questions` lists what this run actually asks — the essential gaps still open
 plus everything already answered, never the whole 30-question bank. `derived`
@@ -1094,7 +1137,7 @@ else unscoped.
 | GET | `/api/sessions/{mode}/{session_id}/labels` | `?run_id=` → a labels row; 404 when the run carries none, 400 on an unknown mode |
 | POST | `/api/sessions/{mode}/{session_id}/labels` | `{run_id?, project_label?, tags?, merge_tags?}` → the labels row. `tags` are added to the run's existing tags unless `merge_tags: false` replaces them; an absent `project_label` keeps the old one and a blank one clears it |
 
-A **scope** is `{sources: [str] | null, window: {kind, count?, start?, end?}, projects: [str], tags: [str], limits: {source: n}}`:
+A **scope** is `{sources: [str] | null, window: {kind, count?, start?, end?}, projects: [str], tags: [str], limits: {source: n}, sessions: [{mode, session_id, run_id}]}`:
 
 - `sources` names the producer modes the run may read (`plan`, `standup`,
   `retro`, `poker`, `performance`, `analysis`, `reporting`, `review`); `null`
@@ -1104,9 +1147,19 @@ A **scope** is `{sources: [str] | null, window: {kind, count?, start?, end?}, pr
   `end` blank means today).
 - `projects` keeps runs carrying any of those project labels; `tags` keeps runs
   carrying all of those tags; `limits` caps a source at its newest `n` runs.
+- `sessions` pins runs by name (`mode` one of the eight producer modes as
+  `/api/sessions/recent` spells them — `planning` for `plan` — with the row's
+  `session_id` for a planning or analysis session and its `run_id` for a
+  history run). A pinned session is always read: it bypasses `window`,
+  `projects`, `tags` and `limits`, is read even under a source `sources`
+  switches off, and comes first among that source's candidates. At most 50.
+  The planning room writes them when a turn's `refs` name a plan or a run;
+  an `update` whose `context` object carries no `sessions` key keeps them,
+  an explicit `sessions: []` clears them. They are never remembered as the
+  mode's last-used scope.
 - The same scope has a one-line spelling every surface accepts in place of the
   object: `all`, `none`, or clauses such as `standup,retro:1@2sprints
-  project=apollo tags=team-a,q3`.
+  project=apollo tags=team-a,q3 session=planning:new-1a2b3c4d-2026-09-01`.
 
 A **labels row** is `{mode, session_id, run_id, project_label, tags, scope, created_at, updated_at}`:
 `mode` is one of `planning`, `analysis`, `standup`, `retro`, `poker`,

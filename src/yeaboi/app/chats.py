@@ -210,8 +210,13 @@ class ChatSupervisor:
         context_scope: dict | None = None,
         project_label: str = "",
         title: str = "",
+        integrations: list[str] | None = None,
+        refs: list[dict] | None = None,
     ) -> LiveChat:
-        """Open a new conversation seeded with the greeting and the description."""
+        """Open a new conversation seeded with the greeting and the description.
+
+        ``refs`` are read into the intake now — the first turn must not repeat them.
+        """
         session_id = self._id_factory()
         state = start_state(
             description,
@@ -220,7 +225,12 @@ class ChatSupervisor:
             analysis_profile_id=analysis_profile_id,
             context_scope=context_scope,
             project_label=project_label,
+            integrations=integrations,
         )
+        if refs:
+            from yeaboi.agent.chat_refs import render_context_block
+
+            state["pasted_context"] = render_context_block(refs)
         chat = LiveChat(session_id, self._session(session_id, state), title=title)
         with self._lock:
             self._chats[session_id] = chat
@@ -357,6 +367,45 @@ class ChatSupervisor:
         if row is None:
             return {"project_label": "", "tags": [], "scope": None}
         return {"project_label": row.project, "tags": list(row.tags), "scope": row.scope}
+
+    def link_sessions(self, chat: LiveChat, refs: list[dict]):
+        """Pin the plans and runs ``refs`` name on the plan's scope, in state and on its label row.
+
+        Returns the scope that now holds them, or None when nothing was pinnable.
+        A label failure never fails the turn.
+        """
+        from yeaboi.context.scope import MODE_SOURCES, SessionRef, coerce_scope, pin_sessions
+
+        pins: list[SessionRef] = []
+        for ref in refs:
+            kind = ref.get("kind")
+            mode = "planning" if kind == "plan" else ref.get("mode", "")
+            key = ref.get("id", "")
+            if kind not in ("plan", "run") or not key:
+                continue
+            if mode not in MODE_SOURCES:
+                logger.info("Chat %s: a %s run is not pinnable (no context source), skipped", chat.session_id, mode)
+                continue
+            if mode in ("planning", "analysis"):
+                pins.append(SessionRef(mode=mode, session_id=key))
+            else:
+                pins.append(SessionRef(mode=mode, run_id=key))
+        if not pins:
+            return None
+        state = chat.session.state
+        try:
+            stored = coerce_scope(state.get("context_scope") or None)
+        except (TypeError, ValueError):
+            logger.warning("Chat %s: unreadable context_scope replaced while pinning", chat.session_id)
+            stored = None
+        scope = pin_sessions(stored, pins)
+        state["context_scope"] = json.dumps(scope.to_dict())
+        try:
+            self.set_labels(chat, scope=scope)
+        except Exception:  # noqa: BLE001 — logged, the turn goes on
+            logger.warning("Pins for %s were not written to the label row", chat.session_id, exc_info=True)
+        logger.info("Chat %s: pinned %d session(s) (%d on the scope)", chat.session_id, len(pins), len(scope.sessions))
+        return scope
 
     def set_labels(
         self,

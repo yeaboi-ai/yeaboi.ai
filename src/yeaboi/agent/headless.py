@@ -190,6 +190,8 @@ def run_planning_pipeline(
     context: ContextScope | dict | str | None = None,
     project_label: str = "",
     tags: Sequence[str] = (),
+    integrations: Sequence[str] | None = None,
+    refs: Sequence[dict] = (),
 ) -> dict:
     """Run the full planning pipeline headlessly and return the final graph state.
 
@@ -231,6 +233,11 @@ def run_planning_pipeline(
             today: every source, no window.
         project_label: The free-text project label recorded on the session.
         tags: Tags recorded beside the defaults every plan gets.
+        integrations: The connection keys this plan may consult (``None`` =
+            every one). Seeds ``session_integrations``; see tools/risk.py.
+        refs: References the plan reads during intake — ``{kind, label, id?,
+            mode?, source?, subject?, url?}`` rows as agent/chat_refs.py
+            validates them. Rendered once into ``pasted_context``.
 
     Returns:
         The final graph state dict (analysis, features, stories, tasks,
@@ -297,6 +304,15 @@ def run_planning_pipeline(
             # session both carry what this run may read.
             graph_state["context_scope"] = json.dumps(scope.to_dict(), sort_keys=True)
             logger.info("Headless: context scope %s", scope.to_spec())
+        if integrations is not None:
+            graph_state["session_integrations"] = list(integrations)
+            logger.info("Headless: integrations restricted to %s", ", ".join(integrations) or "none")
+        if refs:
+            from yeaboi.agent.chat_refs import render_context_block, validate_refs
+
+            checked = validate_refs(list(refs))
+            graph_state["pasted_context"] = render_context_block(checked, db_path=db_path)
+            logger.info("Headless: %d reference(s) read into the intake", len(checked))
         if project_label:
             graph_state["project_label"] = project_label
 

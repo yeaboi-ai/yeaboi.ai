@@ -20,13 +20,12 @@ from datetime import date
 from pathlib import Path
 
 from yeaboi.context.labels import LabelStore, normalize_tags
-from yeaboi.context.scope import SOURCE_LABELS, SOURCES, ContextScope, coerce_scope
+from yeaboi.context.scope import SOURCE_LABELS, SOURCE_MODES, SOURCES, ContextScope, coerce_scope
 from yeaboi.context.window import load_sprint_calendar, resolve_window, window_label
 
 logger = logging.getLogger(__name__)
 
-#: Source token → the ``mode`` its label rows carry.
-SOURCE_MODES: dict[str, str] = {name: ("planning" if name == "plan" else name) for name in SOURCES}
+__all__ = ["SOURCE_MODES", "SourceRow", "Selection", "Preview", "resolve_scope", "preview_scope", "scope_for"]
 
 
 @dataclass(frozen=True)
@@ -141,19 +140,26 @@ def _walk(
     counts: dict[str, int] = {}
     kept: dict[str, list[SourceRow]] = {}
     for source in SOURCES:
+        pinned = scope.pinned(source)
         if not scope.wants(source):
             by_source[source] = ()
             counts[source] = 0
             continue
+        if scope.sources is not None and source not in scope.sources:
+            # Switched off, but pinned: exactly the pins, nothing else.
+            by_source[source] = pinned
+            counts[source] = len(pinned)
+            continue
+        # A pin alone narrows the read: the named session must come first.
         restricted = narrows and (
-            bool(start or end) or bool(scope.projects or scope.tags) or scope.limit_for(source) > 0
+            bool(start or end) or bool(scope.projects or scope.tags) or scope.limit_for(source) > 0 or bool(pinned)
         )
         if not restricted and not count_all:
             by_source[source] = None
             continue
         if not path.exists():
-            by_source[source] = None if not restricted else ()
-            counts[source] = 0
+            by_source[source] = None if not restricted else pinned
+            counts[source] = len(pinned) if restricted else 0
             continue
         try:
             rows = _SOURCE_READERS[source](path)
@@ -164,10 +170,15 @@ def _walk(
             counts[source] = 0
             continue
         selected = _select(rows, source, scope, start, end, path)
-        by_source[source] = tuple(r.key for r in selected) if restricted else None
-        counts[source] = len(selected)
+        # Pins bypass the window, the labels and the cap, and come first so a
+        # reader that takes the newest candidate prefers the named one.
+        keys = tuple(dict.fromkeys([*pinned, *(r.key for r in selected)]))
+        by_source[source] = keys if restricted else None
+        counts[source] = len(keys)
         if keep_rows:
-            kept[source] = _with_labels(selected, source, path)
+            chosen = {r.key for r in selected}
+            extra = [r for r in rows if r.key in pinned and r.key not in chosen]
+            kept[source] = _with_labels([*extra, *selected], source, path)
     selection = Selection(
         scope=scope,
         start=start,

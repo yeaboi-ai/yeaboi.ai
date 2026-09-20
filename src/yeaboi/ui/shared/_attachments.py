@@ -41,6 +41,13 @@ _EXT_FOR_MIME = {"image/png": ".png", "image/jpeg": ".jpg"}
 
 UNSUPPORTED_MESSAGE = "Images are not supported in this field"
 
+# A text file attached to a turn rides the same convention as an image: a
+# `[file #N]` chip in the text, a path list beside it, the chip deciding
+# which travel. What the window may attach, and how big.
+FILE_CHIP_RE = re.compile(r"\[file #(\d+)\]")
+MAX_TEXT_FILE_BYTES = 200 * 1024
+TEXT_FILE_SUFFIXES: tuple[str, ...] = (".md", ".txt", ".csv", ".json", ".log")
+
 
 def chip_text(index: int) -> str:
     """Return the placeholder chip for the ``index``-th attachment (1-based)."""
@@ -97,6 +104,19 @@ def referenced_images(text: str, attachments: list[str]) -> list[str]:
         return []
     indices = {int(m) for m in CHIP_RE.findall(text)}
     return [path for i, path in enumerate(attachments, start=1) if i in indices]
+
+
+def file_chip_text(index: int) -> str:
+    """Return the placeholder chip for the ``index``-th attached text file (1-based)."""
+    return f"[file #{index}]"
+
+
+def referenced_files(text: str, files: list[str]) -> list[str]:
+    """Return the file paths whose ``[file #N]`` chip survives in ``text`` — the images rule, for files."""
+    if not files:
+        return []
+    indices = {int(m) for m in FILE_CHIP_RE.findall(text)}
+    return [path for i, path in enumerate(files, start=1) if i in indices]
 
 
 def unsupported_notice(set_notice: Callable[[str], None]) -> None:

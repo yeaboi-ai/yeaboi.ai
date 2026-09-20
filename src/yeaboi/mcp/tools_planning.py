@@ -132,6 +132,8 @@ def _plan_generate(
     context,
     project_label: str,
     tags: list | None,
+    integrations: list | None,
+    refs: list | None,
     on_progress,
 ) -> dict:
     from yeaboi.agent.headless import run_planning_pipeline
@@ -145,6 +147,8 @@ def _plan_generate(
         ac_format=ac_format,
         architecture_spike=architecture_spike or "auto",
         solo=solo,
+        integrations=list(integrations) if integrations is not None else None,
+        refs=list(refs or ()),
         **context_kwargs(context, project_label, tags),
     )
     plan = json.loads(export_plan_json(state))
@@ -340,6 +344,8 @@ def register(app) -> None:
         context: str | dict | None = None,
         project_label: str = "",
         tags: list[str] | None = None,
+        integrations: list[str] | None = None,
+        refs: list[dict] | None = None,
     ) -> dict:
         """Generate a full sprint plan (analysis, epics, stories, tasks, sprints) from a project
         description. Gather the intake_questions smart_essentials from the user first and pass
@@ -359,7 +365,12 @@ def register(app) -> None:
         spec like 'standup,retro:1@2sprints project=apollo tags=q3' (sources, an optional
         window, project labels and tags); a JSON object of the same shape is accepted. Call
         context_preview first when the user names a timeframe. `project_label` is the free-text
-        project label recorded on the run; `tags` are recorded beside its default tags."""
+        project label recorded on the run; `tags` are recorded beside its default tags.
+        `integrations`: the connection keys (jira, github, notion, …) this plan may consult —
+        omit for every connected one, [] for none. `refs`: what the plan should read first,
+        as {kind: plan|run|integration|link, label, id?, mode?, source?, subject?, url?} rows —
+        another plan's session id, a mode's run (a run with no id is that mode's latest), an
+        item from an integration, or a URL."""
 
         def report(node_name: str, step: int) -> None:
             # Called from the engine's worker thread — bridge the async
@@ -384,6 +395,8 @@ def register(app) -> None:
             context,
             project_label,
             tags,
+            integrations,
+            refs,
             report,
         )
 

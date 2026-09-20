@@ -90,6 +90,7 @@ def attach(app, request: Request) -> Response:
         attachment_filename,
         feedback_attachment_kind,
         max_image_bytes,
+        safe_attachment_name,
     )
     from yeaboi.paths import get_attachments_dir
 
@@ -114,7 +115,7 @@ def attach(app, request: Request) -> Response:
 
     # The stored name is the one the issue body shows, so it keeps the
     # reporter's own — a maintainer reading `app-3f2a91bc.log` is the point.
-    name = _safe_name(payload.get("name"), f"attachment{attachment_extension(mime)}")
+    name = safe_attachment_name(payload.get("name"), f"attachment{attachment_extension(mime)}")
     path = get_attachments_dir(_SCOPE) / attachment_filename(name, mime, uuid.uuid4().hex[:8])
     try:
         path.write_bytes(data)
@@ -159,17 +160,6 @@ def polish(app, request: Request) -> Response:
             "status": status,
         }
     )
-
-
-def _safe_name(raw, fallback: str) -> str:
-    """The reporter's own filename, stripped of any path. Shown in the issue body."""
-    from pathlib import PurePosixPath, PureWindowsPath
-
-    name = str(raw or "").strip()
-    if not name:
-        return fallback
-    name = PureWindowsPath(PurePosixPath(name).name).name
-    return name[:120] or fallback
 
 
 def _draft(request: Request) -> tuple[str, str, str, str]:

@@ -66,6 +66,32 @@ class TestLatestPlanningState:
         assert latest_planning_state(selection, db_path=tmp_path / "x.db") is None
 
 
+class TestPinnedPlanComesFirst:
+    def test_the_resolved_order_is_honoured(self, db):
+        from yeaboi.context.resolve import resolve_scope
+        from yeaboi.context.scope import SessionRef
+
+        sprint = Sprint(id="S1", name="Sprint 1", goal="ship", capacity_points=10, story_ids=())
+        with SessionStore(db) as store:
+            store.create_session("older", "Older")
+            store.save_state("older", {"sprints": [sprint], "messages": []})
+            store.create_session("newer", "Newer")
+            store.save_state("newer", {"sprints": [sprint], "messages": []})
+            store._conn.execute(
+                "UPDATE sessions_meta SET created_at = '2026-01-01T00:00:00' WHERE session_id = 'older'"
+            )
+        pinned = ContextScope(sessions=(SessionRef("planning", "older"),))
+        selection = resolve_scope(pinned, db_path=db)
+        # The pin alone puts the named plan first; the rest still follow.
+        assert selection.ids("plan") == ("older", "newer")
+        assert latest_planning_state(selection, db_path=db)[0] == "older"
+        selection = resolve_scope(
+            ContextScope(sessions=(SessionRef("planning", "older"),), limits=(("plan", 1),)), db_path=db
+        )
+        assert selection.ids("plan")[0] == "older"
+        assert latest_planning_state(selection, db_path=db)[0] == "older"
+
+
 class TestRecentStandupBlockers:
     def _seed(self, db):
         with StandupStore(db) as store:

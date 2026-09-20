@@ -356,6 +356,197 @@ class TestImagesFollowTheirChips:
         assert self._sent(graph) == []
 
 
+class TestTextAttachments:
+    def _post(self, app, **payload):
+        return request(app, "POST", "/api/chat/sessions/proj-1/attachments", {"kind": "text", **payload})
+
+    def test_a_text_file_is_kept_and_chipped(self, app, tmp_path, monkeypatch):
+        monkeypatch.setattr("yeaboi.paths.get_attachments_dir", lambda scope: tmp_path)
+        open_chat(app)
+        body = json.loads(self._post(app, name="../notes.md", text="# hi\n", index=2).body)
+        assert body["chip"] == "[file #2]" and body["kind"] == "text" and body["name"] == "notes.md"
+        assert pathlib.Path(body["path"]).read_text() == "# hi\n"
+        assert pathlib.Path(body["path"]).name.endswith("-notes.md")
+
+    def test_default_kind_is_still_image(self, app, tmp_path, monkeypatch):
+        import base64
+
+        monkeypatch.setattr("yeaboi.paths.get_attachments_dir", lambda scope: tmp_path)
+        open_chat(app)
+        resp = request(
+            app,
+            "POST",
+            "/api/chat/sessions/proj-1/attachments",
+            {"image": base64.b64encode(b"PNG").decode(), "index": 1},
+        )
+        assert json.loads(resp.body)["chip"] == "[image #1]"
+
+    def test_a_bad_suffix_is_a_400(self, app):
+        open_chat(app)
+        assert self._post(app, name="tool.exe", text="x", index=1).code == 400
+        assert self._post(app, name="noext", text="x", index=1).code == 400
+
+    def test_over_200kb_is_a_413(self, app):
+        from yeaboi.ui.shared._attachments import MAX_TEXT_FILE_BYTES
+
+        open_chat(app)
+        assert self._post(app, name="big.log", text="x" * (MAX_TEXT_FILE_BYTES + 1), index=1).code == 413
+
+    def test_an_unknown_kind_or_a_blank_text_is_a_400(self, app):
+        open_chat(app)
+        assert request(app, "POST", "/api/chat/sessions/proj-1/attachments", {"kind": "pdf"}).code == 400
+        assert self._post(app, name="a.md", text="   ", index=1).code == 400
+        assert self._post(app, name="a.md", text=3, index=1).code == 400
+
+
+class TestFilesFollowTheirChips:
+    @staticmethod
+    def _sent(graph) -> list[str]:
+        state = graph.invocations[-1]
+        return list(state.get("chat_context") or state.get("pasted_context") or [])
+
+    def _send(self, app, text, files):
+        resp = request(app, "POST", "/api/chat/sessions/proj-1/send", {"text": text, "files": files})
+        assert resp.code == 200, resp.body
+        b"".join(resp.stream)
+
+    def test_only_chipped_files_travel(self, app, graph, tmp_path, monkeypatch):
+        monkeypatch.setattr("yeaboi.paths.get_attachments_dir", lambda scope: tmp_path)
+        open_chat(app)
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        a.write_text("alpha")
+        b.write_text("beta")
+        self._send(app, "read [file #2]", [str(a), str(b)])
+        assert self._sent(graph) == ["File 1 (b.md):\nbeta"]
+
+    def test_a_path_outside_the_attachments_dir_is_refused(self, app, graph, tmp_path, monkeypatch):
+        monkeypatch.setattr("yeaboi.paths.get_attachments_dir", lambda scope: tmp_path / "inside")
+        (tmp_path / "inside").mkdir()
+        open_chat(app)
+        outside = tmp_path / "secret.md"
+        outside.write_text("nope")
+        self._send(app, "[file #1] [file #2]", [str(outside), str(tmp_path / "inside" / "x.exe")])
+        assert self._sent(graph) == []
+
+    def test_files_must_be_a_list(self, app):
+        open_chat(app)
+        assert request(app, "POST", "/api/chat/sessions/proj-1/send", {"text": "x", "files": "a"}).code == 400
+
+
+class TestRefs:
+    LINK = {"kind": "link", "label": "spec", "url": "https://example.com/spec"}
+
+    @staticmethod
+    def _context(graph) -> list[str]:
+        state = graph.invocations[-1]
+        return list(state.get("chat_context") or state.get("pasted_context") or [])
+
+    def _send(self, app, text, refs):
+        resp = request(app, "POST", "/api/chat/sessions/proj-1/send", {"text": text, "refs": refs})
+        assert resp.code == 200, resp.body
+        b"".join(resp.stream)
+
+    def test_only_chipped_refs_travel(self, app, graph):
+        open_chat(app)
+        other = {"kind": "link", "label": "other", "url": "https://example.com/other"}
+        self._send(app, "see [ref #2]", [other, self.LINK])
+        assert self._context(graph) == ["Reference 1 (link): spec — https://example.com/spec"]
+
+    def test_refs_ride_the_intake_channel_during_intake(self, app, graph):
+        open_chat(app)
+        self._send(app, "[ref #1]", [self.LINK])
+        assert "pasted_context" in graph.invocations[-1] and "chat_context" not in graph.invocations[-1]
+
+    def test_a_bad_kind_and_too_many_are_400s(self, app):
+        from yeaboi.agent.chat_refs import MAX_REFS
+
+        open_chat(app)
+        bad = request(app, "POST", "/api/chat/sessions/proj-1/send", {"text": "x", "refs": [{"kind": "video"}]})
+        assert bad.code == 400 and "kind" in json.loads(bad.body)["error"]
+        many = request(
+            app, "POST", "/api/chat/sessions/proj-1/send", {"text": "x", "refs": [self.LINK] * (MAX_REFS + 1)}
+        )
+        assert many.code == 400
+
+    def test_refs_on_create_are_read_into_the_intake_once(self, app, graph):
+        open_chat(app, refs=[self.LINK])
+        assert app.saved["proj-1"]["pasted_context"] == ["Reference 1 (link): spec — https://example.com/spec"]
+        turn(app)
+        assert graph.invocations[-1]["pasted_context"] == ["Reference 1 (link): spec — https://example.com/spec"]
+
+
+class TestLinkedSessions:
+    PLAN = {"kind": "plan", "label": "Apollo", "id": "new-9"}
+    RUN = {"kind": "run", "mode": "standup", "id": "4", "label": "standup"}
+
+    def test_a_plan_ref_is_recorded_on_the_scope_and_the_label_row(self, app):
+        from yeaboi.context.labels import LabelStore
+
+        open_chat(app)
+        resp = request(
+            app, "POST", "/api/chat/sessions/proj-1/send", {"text": "[ref #1] [ref #2]", "refs": [self.PLAN, self.RUN]}
+        )
+        b"".join(resp.stream)
+        scope = json.loads(app.chats.open("proj-1").session.state["context_scope"])
+        assert scope["sessions"] == [
+            {"mode": "planning", "session_id": "new-9", "run_id": ""},
+            {"mode": "standup", "session_id": "", "run_id": "4"},
+        ]
+        with LabelStore(app.db) as labels:
+            assert labels.get_labels("planning", "proj-1").scope["sessions"][0]["session_id"] == "new-9"
+
+    def test_a_latest_run_and_a_link_pin_nothing(self, app):
+        open_chat(app)
+        refs = [{"kind": "run", "mode": "retro", "label": "retro"}, TestRefs.LINK]
+        resp = request(app, "POST", "/api/chat/sessions/proj-1/send", {"text": "[ref #1] [ref #2]", "refs": refs})
+        b"".join(resp.stream)
+        assert "context_scope" not in app.chats.open("proj-1").session.state
+
+    def test_an_update_without_sessions_keeps_the_pins(self, app):
+        open_chat(app, refs=[self.PLAN])
+        assert json.loads(app.saved["proj-1"]["context_scope"])["sessions"][0]["session_id"] == "new-9"
+        body = json.loads(
+            request(app, "POST", "/api/chat/sessions/proj-1/update", {"context": {"sources": ["retro"]}}).body
+        )
+        assert body["context"]["sources"] == ["retro"]
+        assert body["context"]["sessions"][0]["session_id"] == "new-9"
+
+    def test_an_explicit_empty_list_clears_them(self, app):
+        open_chat(app, refs=[self.PLAN])
+        body = json.loads(request(app, "POST", "/api/chat/sessions/proj-1/update", {"context": {"sessions": []}}).body)
+        assert body["context"]["sessions"] == []
+
+
+class TestIntegrations:
+    def test_absent_key_leaves_the_state_unrestricted(self, app):
+        view = open_chat(app)
+        assert view["integrations"] is None
+        assert "session_integrations" not in app.saved["proj-1"]
+
+    def test_a_list_is_kept_and_shown(self, app, graph):
+        view = open_chat(app, integrations=["jira", "github"])
+        assert view["integrations"] == ["jira", "github"]
+        assert app.saved["proj-1"]["session_integrations"] == ["jira", "github"]
+        turn(app)
+        assert graph.invocations[-1]["session_integrations"] == ["jira", "github"]
+        assert open_chat(app, integrations=[])["integrations"] == []
+
+    def test_an_unknown_key_is_a_400(self, app):
+        resp = request(app, "POST", "/api/chat/sessions", {"description": "x", "integrations": ["fax"]})
+        assert resp.code == 400 and "fax" in json.loads(resp.body)["error"]
+        assert not app.saved
+
+    def test_update_replaces_and_null_clears(self, app):
+        open_chat(app, integrations=["jira"])
+        body = json.loads(request(app, "POST", "/api/chat/sessions/proj-1/update", {"integrations": ["notion"]}).body)
+        assert body["integrations"] == ["notion"]
+        assert app.saved["proj-1"]["session_integrations"] == ["notion"]
+        body = json.loads(request(app, "POST", "/api/chat/sessions/proj-1/update", {"integrations": None}).body)
+        assert body["integrations"] is None
+        assert "session_integrations" not in app.saved["proj-1"]
+        assert json.loads(request(app, "GET", "/api/chat/sessions/proj-1").body)["integrations"] is None
+
+
 class TestSoloConversations:
     def test_solo_true_seeds_the_state_key(self, app):
         open_chat(app, solo=True)

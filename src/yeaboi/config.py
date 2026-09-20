@@ -306,7 +306,9 @@ def set_last_context_scope(mode: str, scope: dict | None) -> None:
     import json
 
     key = _context_scope_key(mode)
-    value = json.dumps(scope, sort_keys=True) if scope else ""
+    # Pinned sessions belong to one run, never to the next one's default.
+    remembered = ({**scope, "sessions": []} if "sessions" in scope else dict(scope)) if scope else None
+    value = json.dumps(remembered, sort_keys=True) if remembered else ""
     config_file = set_config_value(key, value)
     os.environ[key] = value
     logger.info("Context scope for %s %s (persisted to %s)", mode, "set" if value else "cleared", config_file)

@@ -2347,6 +2347,42 @@ class TestQ2RepoUrlFollowUp:
         assert qs.current_question == 2
 
 
+class TestTrackerChoiceHonoursIntegrations:
+    """The intake offers only the trackers the plan's integrations allow."""
+
+    def _run(self, monkeypatch, **extras):
+        monkeypatch.setattr("yeaboi.trackers._jira_configured", lambda: True)
+        monkeypatch.setattr("yeaboi.trackers._azdevops_configured", lambda: True)
+        monkeypatch.setattr("yeaboi.agent.nodes._extract_answers_from_description", lambda _: {})
+        monkeypatch.setattr("yeaboi.agent.nodes._fetch_tracker_velocity", lambda _pref: None)
+        monkeypatch.setattr("yeaboi.agent.nodes._fetch_active_sprint_number", lambda _pref: (None, None, "no sprint"))
+        state = {
+            "messages": [HumanMessage(content="A pond with a pump and a bench.")],
+            "_intake_mode": "smart",
+            **extras,
+        }
+        return project_intake(state)
+
+    def test_two_enabled_trackers_are_offered(self, monkeypatch):
+        result = self._run(monkeypatch)
+        assert result["questionnaire"]._awaiting_tracker_choice is True
+        assert "Which tracker" in result["messages"][0].content
+
+    def test_one_enabled_tracker_is_the_preference_without_asking(self, monkeypatch):
+        result = self._run(monkeypatch, session_integrations=["azdevops", "github"])
+        qs = result["questionnaire"]
+        assert qs._awaiting_tracker_choice is False
+        assert qs._preferred_tracker == "azdevops"
+        assert "Which tracker" not in result["messages"][0].content
+
+    def test_no_enabled_tracker_skips_the_offer(self, monkeypatch):
+        result = self._run(monkeypatch, session_integrations=["github"])
+        qs = result["questionnaire"]
+        assert qs._awaiting_tracker_choice is False
+        assert qs._preferred_tracker == ""
+        assert "Which tracker" not in result["messages"][0].content
+
+
 class TestFindEssentialGaps:
     """Tests for _find_essential_gaps helper."""
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, is_dataclass
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -714,6 +714,7 @@ def start_state(
     analysis_profile_id: str = "",
     context_scope: dict | str | None = None,
     project_label: str = "",
+    integrations: Sequence[str] | None = None,
 ) -> dict:
     """The state a fresh conversation starts from.
 
@@ -724,7 +725,8 @@ def start_state(
     greeting does. ``solo`` seeds the Solo-world key so the intake plans for
     one developer; ``analysis_profile_id`` seeds the team calibration;
     ``context_scope`` (a dict or its JSON) and ``project_label`` are carried
-    for the run to read later.
+    for the run to read later; ``integrations`` (None = unrestricted) names
+    the connections the plan may consult.
     """
     from yeaboi.agent.chat_intake import GREETING_TEXT, resolve_intake_mode, seed_analysis_profile
 
@@ -756,6 +758,8 @@ def start_state(
     seed_analysis_profile(state, analysis_profile_id)
     if project_label:
         state["project_label"] = project_label
+    if integrations is not None:
+        state["session_integrations"] = list(integrations)
     return state
 
 
@@ -806,6 +810,8 @@ class ChatSession:
         on_event: EventSink,
         *,
         images: list[str] | None = None,
+        files: list[str] | None = None,
+        refs: list[dict] | None = None,
         cancel: threading.Event | None = None,
     ) -> bool:
         """Run one graph turn, emitting events as they happen.
@@ -813,10 +819,11 @@ class ChatSession:
         The first turn is an ordinary send: the description is ``messages[0]``
         and the graph builds the questionnaire from it. Returns True once the
         state has moved; provider and cancellation errors propagate, so the
-        caller classifies them for its own surface.
+        caller classifies them for its own surface. ``files`` and ``refs`` are
+        rendered for the model by :mod:`yeaboi.agent.chat_refs`.
         """
         summary_open = at_intake_summary(self.state)
-        if not self._turn(text, on_event, images=images, cancel=cancel):
+        if not self._turn(text, on_event, images=images, files=files, refs=refs, cancel=cancel):
             return False
         qs = questionnaire(self.state)
         if summary_open and qs is not None and qs.completed and not qs.awaiting_confirmation:
@@ -830,6 +837,8 @@ class ChatSession:
         on_event: EventSink,
         *,
         images: list[str] | None = None,
+        files: list[str] | None = None,
+        refs: list[dict] | None = None,
         cancel: threading.Event | None = None,
     ) -> bool:
         """Answer whatever the conversation is parked on.
@@ -840,10 +849,14 @@ class ChatSession:
         a stage that wants :meth:`advance` instead) — a Notice says why.
         """
         stage = self.awaiting
-        logger.info("Chat reply: stage=%s len=%d", stage, len(text))
+        logger.info("Chat reply: stage=%s len=%d files=%d refs=%d", stage, len(text), len(files or ()), len(refs or ()))
         if stage == "review":
+            if files or refs:
+                logger.info("Chat reply: refs and files are not read at a review gate")
             return self._review_reply(text, on_event, images)
         if stage in ("capacity", "spike"):
+            if files or refs:
+                logger.info("Chat reply: refs and files are not read at a %s gate", stage)
             return self._choice_reply(stage, text, on_event)
         if stage in ("pipeline", "epic"):
             on_event(Notice("The plan is being built — there is nothing to answer yet."))
@@ -851,7 +864,7 @@ class ChatSession:
             return False
         if self._blocked(text, on_event):
             return False
-        return self.send(text, on_event, images=images, cancel=cancel)
+        return self.send(text, on_event, images=images, files=files, refs=refs, cancel=cancel)
 
     @staticmethod
     def _blocked(text: str, on_event: EventSink) -> bool:
@@ -909,6 +922,8 @@ class ChatSession:
         cancel: threading.Event | None,
         show_reply: bool = True,
         synthetic: bool = False,
+        files: list[str] | None = None,
+        refs: list[dict] | None = None,
     ) -> bool:
         messages = list(self.state.get("messages", []))
         if text:
@@ -932,6 +947,14 @@ class ChatSession:
                 invoke_state["pasted_images"] = list(self.state.get("pasted_images") or []) + images
             else:
                 invoke_state["chat_images"] = images
+        if files or refs:
+            from yeaboi.agent.chat_refs import render_context_block
+
+            block = render_context_block(refs or (), files or ())
+            if intake_turn:
+                invoke_state["pasted_context"] = list(self.state.get("pasted_context") or []) + block
+            else:
+                invoke_state["chat_context"] = block
 
         result = stream_chat_turn(
             self.graph,

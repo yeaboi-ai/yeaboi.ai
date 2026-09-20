@@ -123,4 +123,11 @@ class TestLabels:
     def test_scope_survives_a_label_write(self, db):
         engine.label_run("standup", "p1", 3, scope=ContextScope(sources=frozenset({"retro"})), db_path=db, today=TODAY)
         row = engine.set_session_labels("standup", "p1", "3", project_label="Apollo", db_path=db)
-        assert row.scope == {"sources": ["retro"], "window": {"kind": "all"}, "projects": [], "tags": [], "limits": {}}
+        assert row.scope == {
+            "sources": ["retro"],
+            "window": {"kind": "all"},
+            "projects": [],
+            "tags": [],
+            "limits": {},
+            "sessions": [],
+        }
