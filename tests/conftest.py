@@ -18,6 +18,13 @@ from pathlib import Path
 
 import pytest
 
+# Render tests use the same terminal in an editor, CI, or an assistant shell.
+# Individual tests can still override these values with monkeypatch.
+os.environ.pop("NO_COLOR", None)
+os.environ["TERM"] = "xterm-256color"
+os.environ["COLUMNS"] = "140"
+os.environ["LINES"] = "40"
+
 # At module scope, and deliberately not a fixture: `web/assets.py` resolves the
 # bundle directory once, at import, so by the time any fixture runs the choice
 # has been made. A developer who exports this to serve a Vite `dist/` would

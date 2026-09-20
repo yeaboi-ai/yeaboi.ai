@@ -211,10 +211,10 @@ jobs:
 
             1. Read the issue with `gh issue view ${{ steps.target.outputs.number }}` (including comments).
             2. Create a branch named `feature/issue-${{ steps.target.outputs.number }}-<short-slug>` off main.
-            3. Implement the change following CLAUDE.md conventions (observability pillars,
+            3. Implement the change following AGENTS.md conventions (observability pillars,
                TUI component standards, frozen-dataclass defaults, tests for every new function).
-               Conventions are split across CLAUDE.md and `.claude/skills/*/SKILL.md` — Read
-               the SKILL.md for each area you touch (see the skills index table in CLAUDE.md).
+               Conventions are split across AGENTS.md and `.agents/skills/*/SKILL.md` — Read
+               the SKILL.md for each area you touch (see the skills index table in AGENTS.md).
             4. Verify: `make test` and `make lint` must both pass before you commit. If the change
                touches `frontend/`, run `make web` and commit `src/yeaboi/web/static/` in the same
                commit. If it adds a capability, add its `CAPABILITIES` row and its `FeatureTip`.
@@ -224,7 +224,7 @@ jobs:
                makes the review independent. Resolve every finding it reports at `blocker` or
                `should-fix` severity: fix it, or state in the PR body why it is intentionally not
                addressed.
-            6. Commit (lowercase imperative message + the Co-Authored-By trailer from CLAUDE.md),
+            6. Commit (lowercase imperative message + the Co-Authored-By trailer from AGENTS.md),
                push the branch, and open a PR against main whose body summarizes the change,
                lists what was verified, and closes the issue
                (`Closes #${{ steps.target.outputs.number }}`).

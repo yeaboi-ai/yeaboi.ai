@@ -169,14 +169,14 @@ jobs:
 
             Read the diff with `gh pr diff ${{ steps.pr.outputs.number }}` and the PR
             description with `gh pr view ${{ steps.pr.outputs.number }}`. Repo conventions
-            are split across CLAUDE.md and `.claude/skills/*/SKILL.md` — Read the SKILL.md
-            for each area the diff touches (see the skills index table in CLAUDE.md)
+            are split across AGENTS.md and `.agents/skills/*/SKILL.md` — Read the SKILL.md
+            for each area the diff touches (see the skills index table in AGENTS.md)
             before judging convention violations. Then review for:
 
             1. **Correctness** — real bugs only: logic errors, broken edge cases, state
                serialization issues (frozen dataclass fields without defaults break --resume),
                concurrency problems in the retro/standup servers.
-            2. **Repo conventions (CLAUDE.md)** — three-pillar observability (logging via
+            2. **Repo conventions (AGENTS.md)** — three-pillar observability (logging via
                logging_setup, paths from paths.py, tests for every new function), TUI component
                standards (shared components from ui/shared/_components.py, theme colours not
                hardcoded RGB), parse → fallback → format pattern in generation code, prompts

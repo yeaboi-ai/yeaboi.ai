@@ -1887,3 +1887,28 @@ class TestADismissalIsNeverAnAccount:
         """The refusal is about the applicant holding the key, not about the shape."""
         reply = account(fixed=0, answered=3, author=MAINTAINER)
         assert prf.classify(snapshot(comments=(*self._superseded(), reply)), NOW).state == "success"
+
+
+class TestNativeCodexAdvisory:
+    def test_codex_thread_is_visible_without_blocking_or_requiring_completion(self):
+        state = snapshot(comments=(review(0),))
+        thread = prf.Thread("codex-1", False, False, "code.py", 3, (prf.CODEX_REVIEWER,), "[P1] defect")
+        state = prf.replace(state, threads=(thread,))
+        verdict = prf.classify(state, NOW)
+        assert verdict.state == "success"
+        assert not verdict.items
+        assert len(verdict.advisory_items) == 1
+        assert "Codex (advisory)" in prf.render_report(state, verdict)
+        assert "Codex review — advisory" in prf.sticky_body(state, verdict)
+        assert verdict.as_dict()["advisory_items"][0]["key"] == "codex-1"
+
+    def test_human_participation_in_codex_thread_still_blocks(self):
+        state = snapshot(comments=(review(0),))
+        thread = prf.Thread("codex-1", False, False, "code.py", 3, (prf.CODEX_REVIEWER, MAINTAINER), "defect")
+        verdict = prf.classify(prf.replace(state, threads=(thread,)), NOW)
+        assert verdict.state == "failure"
+        assert not verdict.advisory_items
+
+    def test_codex_clean_review_cannot_satisfy_required_claude_verdict(self):
+        state = snapshot(comments=(comment("Looks good", author=prf.CODEX_REVIEWER),))
+        assert prf.classify(state, NOW).state != "success"

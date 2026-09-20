@@ -111,7 +111,7 @@ jobs:
                  create a branch `ci-sentinel/fix-${{ steps.dedupe.outputs.run_id }}`,
                  apply the smallest fix, verify `make test` and `make lint` both pass,
                  commit (lowercase imperative + the Co-Authored-By trailer from
-                 CLAUDE.md), push, and open a PR to `main` with the `ci-sentinel`
+                 AGENTS.md), push, and open a PR to `main` with the `ci-sentinel`
                  label. The PR body must state the root cause and what you changed.
                - If it does NOT reproduce (likely a flake) OR you are not confident:
                  do NOT change code. Open an issue with labels `ci-red-main` and
