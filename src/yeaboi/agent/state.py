@@ -419,7 +419,7 @@ def annotations_from(value: object) -> tuple[Annotation, ...]:
 # artifact in this module it is a FROZEN dataclass — immutable once built and
 # serializable via asdict() — so it round-trips cleanly through the session
 # store. Every field has a default so old serialized reports still deserialize
-# (see CLAUDE.md "Frozen dataclass backward compatibility").
+# (see AGENTS.md "Frozen dataclass backward compatibility").
 # How many evidence rows one member's category carries in a report.
 #
 # It lives here, on the neutral module both readers already import, because two
@@ -615,7 +615,7 @@ class StandupReport:
 # field that every older serialized report lacks.
 #
 # Same rules as every artifact here: FROZEN, every field defaulted, collections
-# as tuples so asdict() round-trips (see CLAUDE.md "Frozen dataclass backward
+# as tuples so asdict() round-trips (see AGENTS.md "Frozen dataclass backward
 # compatibility").
 @dataclass(frozen=True)
 class TranscriptSource:
@@ -770,7 +770,7 @@ class IssueFilingResult:
 # are gathered live during the session by the mutable RetroBoard (retro/board.py,
 # which owns the threading lock); RetroReport is the finalized snapshot the store
 # and exporter consume. Every field is defaulted so old serialized reports still
-# deserialize (see CLAUDE.md "Frozen dataclass backward compatibility").
+# deserialize (see AGENTS.md "Frozen dataclass backward compatibility").
 @dataclass(frozen=True)
 class RetroCard:
     """One sticky card on the retro board.
@@ -794,7 +794,7 @@ class RetroCard:
     # Progress on a *carried-over* action item from the previous retro. Empty for
     # normal authoring-grid cards; one of retro.board.CARRIED_STATUSES for the items
     # surfaced in the "Last sprint's actions" review column so the team can close the
-    # loop (pending/done/in_progress/carried_over/not_relevant). See CLAUDE.md retro.
+    # loop (pending/done/in_progress/carried_over/not_relevant). See AGENTS.md retro.
     status: str = ""
 
 
@@ -839,7 +839,7 @@ class RetroReport:
 # points back to the board. Like Retro, the live session is run by a mutable,
 # lock-guarded board (poker/board.py); these FROZEN dataclasses are the
 # finalized snapshot the store and exporter consume. Every field is defaulted
-# so old serialized reports still deserialize (see CLAUDE.md "Frozen dataclass
+# so old serialized reports still deserialize (see AGENTS.md "Frozen dataclass
 # backward compatibility").
 @dataclass(frozen=True)
 class PokerVote:
@@ -903,7 +903,7 @@ class PokerReport:
 # three connected workflows — 1:1 Prep, 1:1 Completion, and a 6-Month Review —
 # each producing a FROZEN dataclass artifact (immutable + asdict()-serializable),
 # exactly like the Standup / Retro reports above. Every field is defaulted so an
-# artifact serialized by an older version still deserializes (see CLAUDE.md
+# artifact serialized by an older version still deserializes (see AGENTS.md
 # "Frozen dataclass backward compatibility"). The roster (EngineerRef) is derived
 # from the real people who did work in Jira / Azure DevOps, and EngineerActivity
 # is the per-engineer slice of their recent-sprint tickets that seeds a 1:1 prep.

@@ -108,6 +108,9 @@ jobs:
               && 'Bash(gh issue list:*),Bash(gh issue view:*),Read'
               || 'Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(date:*),Read' }}"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             You are the feedback-remediation triager. The fresh open issues to
             triage are in `issues.json` at the repo root (bot-authored and
             already-`triaged` issues are excluded). The in-TUI feedback form files

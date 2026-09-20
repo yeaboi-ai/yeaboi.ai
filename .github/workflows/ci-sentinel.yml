@@ -98,6 +98,9 @@ jobs:
           claude_args: >-
             --model ${{ vars.YEABOI_MODEL_DEEP || 'claude-opus-5' }} --max-turns 40 --allowedTools "Bash,Read,Edit,Write,Glob,Grep"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             CI failed on `main` (run id: ${{ steps.dedupe.outputs.run_id }}). You are
             on a fresh checkout of `main`. Diagnose the failure and act — NEVER push
             or commit to `main` directly.

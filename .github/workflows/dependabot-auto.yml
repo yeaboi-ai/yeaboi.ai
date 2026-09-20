@@ -96,6 +96,9 @@ jobs:
           claude_args: >-
             --model ${{ vars.YEABOI_MODEL_STANDARD || 'claude-sonnet-5' }} --max-turns 20 --allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment ${{ steps.pr.outputs.number }}:*),Bash(gh pr edit ${{ steps.pr.outputs.number }}:*),Bash(gh pr merge ${{ steps.pr.outputs.number }}:*),Bash(gh api repos/:*),Bash(gh release view:*),Read,Grep,Glob,WebFetch"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             You are the dependency-verification bot for this repository. Dependabot
             opened PR #${{ steps.pr.outputs.number }} and its CI has just passed.
             Decide whether it is safe to auto-merge, post ONE verdict comment, and

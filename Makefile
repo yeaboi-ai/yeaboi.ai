@@ -72,7 +72,7 @@ SLOW_PATHS ?= tests/integration/ tests/contract/
 # worker, so module-scoped fixtures, the shared `tmp_path` conventions and the
 # handful of tests that bind a socket behave exactly as they do serially. The
 # integration lane stays serial — `tests/integration/test_repl.py` monkeypatches
-# ten-plus names and CLAUDE.md forbids editing it.
+# ten-plus names and AGENTS.md forbids editing it.
 PYTEST_PARALLEL ?= -n auto --dist loadfile
 
 # The versions CI's non-required `compat` job covers — everything above the

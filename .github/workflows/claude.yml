@@ -61,6 +61,7 @@ jobs:
           # guard against runaway sessions, not a quality lever.
           claude_args: >-
             --model ${{ vars.YEABOI_MODEL_DEEP || 'claude-opus-5' }} --max-turns 50
+            --append-system-prompt "Read AGENTS.md, .agents/repo-notes.md, and the relevant .agents/skills/*/SKILL.md before starting."
 
   # Issue-to-PR: adding the `claude-implement` label to an issue kicks off an
   # implementation run that opens a PR. The PR then flows through ci.yml,
@@ -207,6 +208,9 @@ jobs:
             --model ${{ steps.model.outputs.id }} --max-turns 110
             --allowedTools "Read,Grep,Glob,Edit,Write,Task,Bash(make:*),Bash(uv run:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh api:*)"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             Implement GitHub issue #${{ steps.target.outputs.number }} in ${{ github.repository }}.
 
             1. Read the issue with `gh issue view ${{ steps.target.outputs.number }}` (including comments).

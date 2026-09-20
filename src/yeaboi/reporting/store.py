@@ -63,7 +63,7 @@ def _dict_to_report(d: dict) -> DeliveryReport:
     """Reconstruct a DeliveryReport from a JSON-parsed dict.
 
     Uses ``.get()`` with defaults for every field so reports serialized by an older
-    version (missing keys) still deserialize — see CLAUDE.md "Frozen dataclass
+    version (missing keys) still deserialize — see AGENTS.md "Frozen dataclass
     backward compatibility". JSON turns each tuple into a list, so themes/metrics/
     emoji_theme are rebuilt back into tuples-of-tuples.
     """

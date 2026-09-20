@@ -1,7 +1,7 @@
 """Documentation quality — is the team's written knowledge clear, and how does AI show up in it?
 
 # See README: "Architecture" — engines are UI-free pipelines; this is a sub-analysis
-# of team-analysis mode (CLAUDE.md "REQUIRED: Surface Parity" — the TUI/CLI/MCP are
+# of team-analysis mode (AGENTS.md "REQUIRED: Surface Parity" — the TUI/CLI/MCP are
 # thin adapters over ``analysis/engine.py:run_team_analysis``, which calls into here).
 
 What this does

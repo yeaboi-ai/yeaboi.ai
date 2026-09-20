@@ -226,7 +226,7 @@ class TestTruecolorConsoles:
     RGB_FRAGMENT = re.compile(r"\"\d{1,3};\d{1,3};[\d;]*\d{1,3}\"")
 
     # `tests/integration/` is exempt, and deliberately: it is a separate CI job in
-    # its own process, so it cannot poison the unit lane, and CLAUDE.md forbids
+    # its own process, so it cannot poison the unit lane, and AGENTS.md forbids
     # editing `test_repl.py` at all.
     EXEMPT_DIRS = ("integration",)
 

@@ -61,7 +61,7 @@ def _dict_to_retro_report(d: dict) -> RetroReport:
     """Reconstruct a RetroReport from a JSON-parsed dict.
 
     Uses ``.get()`` with defaults for every field so reports serialized by an
-    older version (missing keys) still deserialize — see CLAUDE.md
+    older version (missing keys) still deserialize — see AGENTS.md
     "Frozen dataclass backward compatibility".
     """
 

@@ -163,6 +163,9 @@ jobs:
           # there is nothing here to hide.
           show_full_output: true
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             Review PR #${{ steps.pr.outputs.number }} in ${{ github.repository }}.
             The full CI suite has already passed on this PR — do not re-verify what
             CI covers; focus on what tests cannot catch.
