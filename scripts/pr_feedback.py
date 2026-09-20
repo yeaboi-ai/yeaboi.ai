@@ -935,12 +935,13 @@ def describe(items: Sequence[OpenItem]) -> str:
     return head[:DESCRIPTION_LIMIT]
 
 
-CODEX_REVIEWER = "chatgpt-codex-connector[bot]"
+# GitHub GraphQL omits the suffix REST includes for this app's bot login.
+CODEX_REVIEWERS = frozenset({"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"})
 
 
 def codex_only_thread(thread: Thread, author: str) -> bool:
     participants = set(thread.authors) - {author}
-    return participants == {CODEX_REVIEWER}
+    return bool(participants) and participants <= CODEX_REVIEWERS
 
 
 def classify(snapshot: Snapshot, now: datetime) -> Verdict:

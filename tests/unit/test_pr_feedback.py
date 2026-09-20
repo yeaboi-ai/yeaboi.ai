@@ -1890,9 +1890,19 @@ class TestADismissalIsNeverAnAccount:
 
 
 class TestNativeCodexAdvisory:
-    def test_codex_thread_is_visible_without_blocking_or_requiring_completion(self):
+    @pytest.mark.parametrize("login", ["chatgpt-codex-connector", "chatgpt-codex-connector[bot]"])
+    def test_codex_thread_is_visible_without_blocking_or_requiring_completion(self, login):
         state = snapshot(comments=(review(0),))
-        thread = prf.Thread("codex-1", False, False, "code.py", 3, (prf.CODEX_REVIEWER,), "[P1] defect")
+        thread = prf._thread(
+            {
+                "id": "codex-1",
+                "isResolved": False,
+                "isOutdated": False,
+                "path": "code.py",
+                "line": 3,
+                "comments": {"nodes": [{"author": {"login": login}, "body": "[P1] defect"}]},
+            }
+        )
         state = prf.replace(state, threads=(thread,))
         verdict = prf.classify(state, NOW)
         assert verdict.state == "success"
@@ -1902,13 +1912,21 @@ class TestNativeCodexAdvisory:
         assert "Codex review — advisory" in prf.sticky_body(state, verdict)
         assert verdict.as_dict()["advisory_items"][0]["key"] == "codex-1"
 
-    def test_human_participation_in_codex_thread_still_blocks(self):
+    @pytest.mark.parametrize("login", ["chatgpt-codex-connector", "chatgpt-codex-connector[bot]"])
+    def test_human_participation_in_codex_thread_still_blocks(self, login):
         state = snapshot(comments=(review(0),))
-        thread = prf.Thread("codex-1", False, False, "code.py", 3, (prf.CODEX_REVIEWER, MAINTAINER), "defect")
+        thread = prf.Thread("codex-1", False, False, "code.py", 3, (login, MAINTAINER), "defect")
+        verdict = prf.classify(prf.replace(state, threads=(thread,)), NOW)
+        assert verdict.state == "failure"
+        assert not verdict.advisory_items
+
+    def test_similarly_named_reviewer_still_blocks(self):
+        state = snapshot(comments=(review(0),))
+        thread = prf.Thread("human-1", False, False, "code.py", 3, ("chatgpt-codex-connector-human",), "defect")
         verdict = prf.classify(prf.replace(state, threads=(thread,)), NOW)
         assert verdict.state == "failure"
         assert not verdict.advisory_items
 
     def test_codex_clean_review_cannot_satisfy_required_claude_verdict(self):
-        state = snapshot(comments=(comment("Looks good", author=prf.CODEX_REVIEWER),))
+        state = snapshot(comments=(comment("Looks good", author="chatgpt-codex-connector[bot]"),))
         assert prf.classify(state, NOW).state != "success"
