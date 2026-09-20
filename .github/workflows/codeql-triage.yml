@@ -116,6 +116,9 @@ jobs:
           claude_args: >-
             --model ${{ vars.YEABOI_MODEL_DEEP || 'claude-opus-5' }} --max-turns 80 --allowedTools "Read,Grep,Glob,Edit,Write,Task,Bash(make:*),Bash(uv run:*),Bash(git:*),Bash(gh api:*),Bash(gh pr:*),Bash(gh issue:*)"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             The deterministic survey just read this repo's open code-scanning
             alerts. Two files at the repo root hold its output:
 

@@ -2593,7 +2593,7 @@ class TestBuildGenerateConfirmScreen:
         assert isinstance(_build_generate_confirm_screen(width=80, height=14), Panel)
 
     def test_buttons_registered(self):
-        """New button labels must have colours registered (CLAUDE.md convention)."""
+        """New button labels must have colours registered (AGENTS.md convention)."""
         from yeaboi.ui.shared._components import _BTN_COLORS
 
         assert "Generate tickets" in _BTN_COLORS

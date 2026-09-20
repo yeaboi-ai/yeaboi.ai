@@ -302,7 +302,7 @@ def _dict_to_standup_report(d: dict) -> StandupReport:
     """Reconstruct a StandupReport from a JSON-parsed dict.
 
     Uses ``.get()`` with defaults for every field so reports serialized by an
-    older version (missing keys) still deserialize — see CLAUDE.md
+    older version (missing keys) still deserialize — see AGENTS.md
     "Frozen dataclass backward compatibility".
     """
     members = tuple(
@@ -452,7 +452,7 @@ def _dict_to_review(d: dict) -> TranscriptReview:
     """Reconstruct a TranscriptReview from a JSON-parsed dict.
 
     ``.get()`` with a default for every field, so a review serialized by an
-    older version still deserializes — see CLAUDE.md "Frozen dataclass
+    older version still deserializes — see AGENTS.md "Frozen dataclass
     backward compatibility".
     """
     return TranscriptReview(

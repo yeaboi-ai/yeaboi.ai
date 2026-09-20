@@ -120,7 +120,7 @@ def _dict_to_analysis(d: dict) -> RoadmapAnalysis:
     """Reconstruct a RoadmapAnalysis from a JSON-parsed dict.
 
     Uses ``.get()`` with defaults for every field so analyses serialized by an
-    older version (missing keys) still deserialize — see CLAUDE.md "Frozen
+    older version (missing keys) still deserialize — see AGENTS.md "Frozen
     dataclass backward compatibility". JSON turns tuples into lists, so the
     projects/themes/warnings collections are rebuilt back into tuples.
     """

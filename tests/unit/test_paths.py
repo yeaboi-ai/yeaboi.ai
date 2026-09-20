@@ -54,7 +54,7 @@ class TestExportDirHelpers:
 
 
 class TestAgentwatchLogDir:
-    """The Agents family's log directory (CLAUDE.md: every mode logs to its own)."""
+    """The Agents family's log directory (AGENTS.md: every mode logs to its own)."""
 
     def test_creates_under_the_constant(self, monkeypatch, tmp_path):
         monkeypatch.setattr(paths, "AGENTWATCH_LOGS_DIR", tmp_path / "logs" / "agentwatch")

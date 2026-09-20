@@ -625,7 +625,7 @@ def build_parser() -> argparse.ArgumentParser:
     # ── Subcommands — headless mode runners ───────────────────────────────
     # Additive: every flat flag above keeps working (the subparsers action is
     # optional, so bare `yeaboi` and `yeaboi --<flag>` parse unchanged).
-    # See CLAUDE.md "REQUIRED: Surface Parity" — each mode needs a CLI path;
+    # See AGENTS.md "REQUIRED: Surface Parity" — each mode needs a CLI path;
     # these run the same engines the TUI and the MCP server use.
     subparsers = parser.add_subparsers(
         dest="command", metavar="{report,standup,standup-review,perf,retro,poker,review,analyze,agents}"
@@ -2103,7 +2103,7 @@ def _run_subcommand(args: argparse.Namespace) -> int:
     """Dispatch `yeaboi <command>` headless runners. Returns a process exit code.
 
     Thin adapters over the same engines the TUI and MCP server use
-    (CLAUDE.md "REQUIRED: Surface Parity").
+    (AGENTS.md "REQUIRED: Surface Parity").
     """
     from rich.console import Console
 
@@ -2228,7 +2228,7 @@ def _cmd_report(args: argparse.Namespace, console: Console) -> int:
 
 def _cmd_standup(args: argparse.Namespace, console: Console) -> int:
     # Route this run's records to ~/.yeaboi/logs/standup/ like every other
-    # standup entry point (CLAUDE.md "Observability" — each mode logs to its own
+    # standup entry point (AGENTS.md "Observability" — each mode logs to its own
     # directory). Only the --standup-run scheduler path did this before, so a
     # `yeaboi standup` run left nothing behind in the standup log.
     from yeaboi.logging_setup import mode_log
@@ -2581,7 +2581,7 @@ def _cmd_perf(args: argparse.Namespace, console: Console) -> int:
 
 def _cmd_provenance(args: argparse.Namespace, console: Console) -> int:
     """The provenance audit headless: same engine the MCP tools use
-    (CLAUDE.md "REQUIRED: Surface Parity")."""
+    (AGENTS.md "REQUIRED: Surface Parity")."""
     import json
     from dataclasses import asdict
 
@@ -3412,7 +3412,7 @@ def _cmd_ceremonies(args: argparse.Namespace, console: Console) -> int:
 
 def _cmd_ship(args: argparse.Namespace, console: Console) -> int:
     """The ship pipeline headless: same engine the TUI page uses
-    (CLAUDE.md "REQUIRED: Surface Parity"). The approval gate prompts on the
+    (AGENTS.md "REQUIRED: Surface Parity"). The approval gate prompts on the
     terminal and resolves through the same ShipStore CAS as the TUI screen."""
     import json
     from dataclasses import asdict
@@ -3779,7 +3779,7 @@ def _cmd_agents_dismissals(args: argparse.Namespace, console: Console) -> int:
 
 def _cmd_agents(args: argparse.Namespace, console: Console) -> int:
     """The Agents family headless: same engines the TUI cards and MCP tools use
-    (CLAUDE.md "REQUIRED: Surface Parity")."""
+    (AGENTS.md "REQUIRED: Surface Parity")."""
     logging.getLogger(__name__).info("agents %s (beta)", args.agents_command)
     _print_beta_notice(AGENTWATCH_BETA_NOTICE)
 

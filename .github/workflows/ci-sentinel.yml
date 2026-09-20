@@ -98,6 +98,9 @@ jobs:
           claude_args: >-
             --model ${{ vars.YEABOI_MODEL_DEEP || 'claude-opus-5' }} --max-turns 40 --allowedTools "Bash,Read,Edit,Write,Glob,Grep"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             CI failed on `main` (run id: ${{ steps.dedupe.outputs.run_id }}). You are
             on a fresh checkout of `main`. Diagnose the failure and act — NEVER push
             or commit to `main` directly.
@@ -111,7 +114,7 @@ jobs:
                  create a branch `ci-sentinel/fix-${{ steps.dedupe.outputs.run_id }}`,
                  apply the smallest fix, verify `make test` and `make lint` both pass,
                  commit (lowercase imperative + the Co-Authored-By trailer from
-                 CLAUDE.md), push, and open a PR to `main` with the `ci-sentinel`
+                 AGENTS.md), push, and open a PR to `main` with the `ci-sentinel`
                  label. The PR body must state the root cause and what you changed.
                - If it does NOT reproduce (likely a flake) OR you are not confident:
                  do NOT change code. Open an issue with labels `ci-red-main` and

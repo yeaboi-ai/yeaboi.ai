@@ -39,6 +39,8 @@ def db(tmp_path):
 
 @pytest.fixture(autouse=True)
 def _configured(monkeypatch, tmp_path):
+    # Retention uses the poll's fixed clock, including when the store prunes.
+    monkeypatch.setattr("yeaboi.slack.store._now", lambda: NOW)
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-1")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C123")
     monkeypatch.setenv("SLACK_ALLOWED_MEMBER_IDS", ACTOR)

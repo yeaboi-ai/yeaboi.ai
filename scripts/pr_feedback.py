@@ -53,7 +53,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -421,8 +421,11 @@ class Verdict:
     # "green with findings" used to mean exactly one thing and now means two.
     reason: str = ""
 
+    advisory_items: tuple[OpenItem, ...] = ()
+
     def as_dict(self) -> dict:
         return {
+            "advisory_items": [item.as_dict() for item in self.advisory_items],
             "state": self.state,
             "description": self.description,
             "reason": self.reason,
@@ -932,7 +935,25 @@ def describe(items: Sequence[OpenItem]) -> str:
     return head[:DESCRIPTION_LIMIT]
 
 
+# GitHub GraphQL omits the suffix REST includes for this app's bot login.
+CODEX_REVIEWERS = frozenset({"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"})
+
+
+def codex_only_thread(thread: Thread, author: str) -> bool:
+    participants = set(thread.authors) - {author}
+    return bool(participants) and participants <= CODEX_REVIEWERS
+
+
 def classify(snapshot: Snapshot, now: datetime) -> Verdict:
+    """Keep native Codex findings visible without changing existing merge gates."""
+    advisory_threads = tuple(t for t in snapshot.threads if codex_only_thread(t, snapshot.author))
+    enforced = replace(snapshot, threads=tuple(t for t in snapshot.threads if t not in advisory_threads))
+    verdict = _classify_enforced(enforced, now)
+    advisory = tuple(open_threads(replace(snapshot, threads=advisory_threads)))
+    return replace(verdict, advisory_items=advisory)
+
+
+def _classify_enforced(snapshot: Snapshot, now: datetime) -> Verdict:
     """The whole decision. Everything above feeds this; nothing below re-decides it."""
     if OVERRIDE_LABEL in snapshot.labels:
         # The override is a stronger dismissal than any marker — it clears every
@@ -1506,6 +1527,13 @@ def _ledger_block(snapshot: Snapshot) -> list[str]:
 
 
 def sticky_body(snapshot: Snapshot, verdict: Verdict) -> str:
+    body = _sticky_body(snapshot, verdict)
+    if verdict.advisory_items:
+        body += "\n\n**Codex review — advisory**\n\n" + "\n".join(f"- {item.detail}" for item in verdict.advisory_items)
+    return body
+
+
+def _sticky_body(snapshot: Snapshot, verdict: Verdict) -> str:
     """The comment a human reads when the check goes red — what, and how to clear it."""
     lines = [STICKY_MARKER]
     if verdict.state == "pending":
@@ -1685,6 +1713,8 @@ def render_report(snapshot: Snapshot, verdict: Verdict) -> str:
     lines = [f"[{icon}] PR #{snapshot.number} @ {snapshot.head_sha[:7]} — {verdict.description}"]
     for item in verdict.items:
         lines.append(f"       · {item.detail}")
+    for item in verdict.advisory_items:
+        lines.append(f"       · Codex (advisory): {item.detail}")
     # Printed on a clean PR too, and deliberately: "the gate is green" and "the
     # findings were answered" are different sentences, and this is the second.
     for line in review_ledger(snapshot):

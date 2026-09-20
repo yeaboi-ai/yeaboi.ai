@@ -73,7 +73,7 @@ class TestUserFacingSurfaces:
         contract = json.loads((ROOT / "contracts" / "site.json").read_text(encoding="utf-8"))
         assert contract["requires_python"] == REQUIRES_PYTHON, "run `make site-contract` and commit the result"
 
-    @pytest.mark.parametrize("page", ["README.md", "CLAUDE.md"])
+    @pytest.mark.parametrize("page", ["README.md", "AGENTS.md"])
     def test_no_page_names_a_version_below_the_floor(self, page):
         """A doc that still says 3.11+ turns away people the change just admitted."""
         text = (ROOT / page).read_text(encoding="utf-8")

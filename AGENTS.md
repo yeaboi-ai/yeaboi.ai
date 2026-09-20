@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Agent instructions
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Shared guidance for Claude Code and Codex working in this repository.
 
 ## Project
 
@@ -59,34 +59,34 @@ Terminal GIFs: `make demo` re-records `demo.cast.gz` + `demo.gif` from a scripte
 
 ## Parallel Development (worktrees)
 
-Each feature gets its own git worktree under `<main checkout>/.claude/worktrees/<name>` with its own branch, `.env`, uv venv, port block and `~/.yeaboi` data home (`.worktree.env`, generated at creation; `make wt-repair NAME=…` retrofits an older tree). Hooks are one tracked `.githooks/pre-commit` reached through a relative `core.hooksPath`, so each worktree runs its own venv's. **Shared on purpose**: one `.git` (hence one stash stack — use `make stash`/`make unstash`, never a bare `pop`) and one set of credentials in `~/.yeaboi/.env`. Never develop two features in one checkout. A new worktree is cut from latest `origin/main`; an existing local branch is left untouched, and a branch that exists only on `origin` is checked out tracking the remote — rebase it with `/sync-main`.
+Each feature gets its own git worktree under `<main checkout>/.worktrees/<name>` with its own branch, `.env`, uv venv, port block and `~/.yeaboi` data home (`.worktree.env`, generated at creation; `make wt-repair NAME=…` retrofits an older tree). Hooks are one tracked `.githooks/pre-commit` reached through a relative `core.hooksPath`, so each worktree runs its own venv's. **Shared on purpose**: one `.git` (hence one stash stack — use `make stash`/`make unstash`, never a bare `pop`) and one set of credentials in `~/.yeaboi/.env`. Never develop two features in one checkout. A new worktree is cut from latest `origin/main`. Existing branch names require `REUSE=1`; reuse and refresh rebase onto `origin/main`, skipping dirty trees and aborting conflicts safely. Existing `.claude/worktrees/<name>` trees remain supported in place.
 
 The venv and pre-commit half is this repo's `scripts/provision.sh`, which the shared worktree script runs inside the new tree; the rest lives in **[yeaboi-tooling](https://github.com/yeaboi-ai/yeaboi-tooling)** (see *Shared tooling* below).
 
 ```bash
-make wt-new NAME=my-feature       # create worktree off latest origin/main + open VS Code with claude auto-running
+make wt-new NAME=my-feature       # create worktree off latest origin/main + open VS Code with Claude and Codex launch tasks
 make wt-headless NAME=my-feature  # same, WITHOUT VS Code (for background-agent work)
 make wt-issue ISSUE=123           # worktree from the branch of GitHub issue 123 (linked branch / closing PR); HEADLESS=1 to skip VS Code
 make wt-list                      # list worktrees (branch, clean/dirty, path)
 make wt-rm NAME=my-feature        # remove worktree dir + branch
 ```
 
-Slash commands: `/wt` (worktree ops from inside a session), `/sync-main` (rebase on latest main + re-verify), `/ship` (independent review → full tests → commit → push → PR), `/migrate` (fan out a mechanical migration across many files via parallel worktree agents) come from the shared plugin; `/pr-feedback` and `/babysit-prs` are still local, in `.claude/commands/`.
+Slash commands: `/wt` (worktree ops from inside a session), `/sync-main` (rebase on latest main + re-verify), `/ship` (independent review → full tests → commit → push → PR), `/migrate` (fan out a mechanical migration across many files via parallel worktree agents) come from the shared plugin; `/pr-feedback` and `/babysit-prs` are local adapters over `.agents/skills/`. Codex uses the same procedures through those skills or `make agent TASK=...`.
 
 ### Shared tooling (`yeaboi-tooling`)
 
-The development workflow is managed in one place for all five yeaboi repos, and arrives here in two halves:
+The development workflow is managed in one place for all six yeaboi repos, and arrives here in two halves:
 
-- **The `yeaboi-devkit` Claude Code plugin** — `/ship`, `/sync-main`, `/wt`, `/migrate`, the `code-reviewer` / `test-writer` / `migrator` agents, and both hooks. Installed by `extraKnownMarketplaces` + `enabledPlugins` in `.claude/settings.json`; nothing to run.
+- **The `yeaboi-devkit` Claude Code plugin** — `/ship`, `/sync-main`, `/wt`, `/migrate`, the `code-reviewer` / `test-writer` / `migrator` agents, and the shared hook scripts. Installed by `extraKnownMarketplaces` + `enabledPlugins` in `.claude/settings.json`; nothing to run.
 - **A pinned clone** — `mk/common.mk` and the worktree scripts, cloned to a gitignored `.tooling/` at the sha in `.tooling-rev`. The block at the top of the `Makefile` syncs it at parse time, and only when the pin and the checkout disagree, so a fresh worktree provisions itself on its first `make` and the steady state costs no network. Bump with `make tooling-bump`.
 
-**The plugin reaches this repo only through Make targets** — `lint`, `test`, `test-fast`, `test-scoped`, `ship-gate` — which is what lets one `/ship` also drive the front-end, desktop and site repos. The procedure is shared; **this repo's facts live in `.claude/repo-notes.md`**, which `/ship` and `/sync-main` read: which pre-commit hook to skip, what the gate covers, that `auto-version.yml` rewrites the branch after the push, and the rebase conflict playbook. Keep that file current — `tests/unit/test_ship_gate.py` and CI's `make tooling-check` are what notice when it or a target goes missing.
+**The plugin reaches this repo only through Make targets** — `lint`, `test`, `test-fast`, `test-scoped`, `ship-gate` — which is what lets one `/ship` also drive the front-end, desktop and site repos. The procedure is shared; **this repo's facts live in `.agents/repo-notes.md`**, which `/ship` and `/sync-main` read: which pre-commit hook to skip, what the gate covers, that `auto-version.yml` rewrites the branch after the push, and the rebase conflict playbook. Keep that file current — `tests/unit/test_ship_gate.py` and CI's `make tooling-check` are what notice when it or a target goes missing.
 
 Never edit anything under `.tooling/`: it is a pinned checkout, `tooling-check` fails on a dirty one, and a fix made there is invisible to every other repo. Change it upstream and bump the pin.
 
 ### Verification loop
 
-- **Every turn (automatic)**: a Stop hook runs `make lint` + `make test-scoped` whenever a turn ends with dirty source files, and a PostToolUse hook ruff-formats every edited `.py` file. Both ship with the plugin — there is nothing wired in `.claude/settings.json` any more.
+- **Every turn (automatic)**: a Stop hook runs `make lint` + `make test-scoped` whenever a turn ends with dirty source files, and a PostToolUse hook ruff-formats every edited `.py` file. Claude loads the shared scripts through the plugin; Codex uses `.codex/hooks.json` after project trust and `/hooks` approval.
 - **At ship time (`/ship`)**: the branch is committed and **rebased onto `origin/main` first** — a gate run on a stale base proves something about a tree that will never exist — and then an independent fresh-context agent reviews `git diff origin/main...HEAD` (spec-fit + conventions) **concurrently** with `make ship-gate` (`lint` → `format-check` → `test` → `security` → `preflight`).
 - **In CI**: `claude-review.yml` posts an async code + security review once the full CI suite has passed on a PR (non-blocking; `ci.yml` remains the merge gate).
 
@@ -245,7 +245,7 @@ Conventions: agent logic in `agent/`, prompts separate in `prompts/`, tools sepa
 
 ## Detailed Conventions (lazy-loaded skills)
 
-Deep reference lives in `.claude/skills/` and loads on demand in interactive sessions. In CI/headless contexts, Read the SKILL.md for any area your change touches:
+Deep reference lives in `.agents/skills/` and loads on demand in interactive sessions. In CI/headless contexts, Read the SKILL.md for any area your change touches:
 
 | Skill | Load when touching… |
 |---|---|
@@ -262,4 +262,31 @@ Deep reference lives in `.claude/skills/` and loads on demand in interactive ses
 - **Commit messages**: lowercase imperative (e.g. "add streaming output", "fix import sorting")
 - **Branch naming**: `feature/<description>` for feature work
 - **PRs**: feature branches merge to `main` via pull request
-- Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` on AI-assisted commits
+- Attribute AI assistance to the assistant that actually contributed; never claim a different provider or model.
+
+## Shared assistant workflow
+
+Run `make agent-setup` on a fresh checkout to expose the pinned shared skills, then
+`make agent-check` to check discovery and CLI availability. Claude commands and Codex skills
+read the same procedures. Codex uses `.agents/skills/`; Claude's existing commands remain available.
+Start either CLI with `make agent AGENT=claude` or `make agent AGENT=codex`.
+Use `TASK=yeaboi-ship` (or another installed skill) and `ARGS="task context"` to select a procedure;
+`make agent-run` runs it non-interactively using the CLI's local login.
+
+`make wt-new NAME=x` creates a workspace set and offers both editor launch tasks.
+`AGENT=claude` or `AGENT=codex` auto-starts exactly one. `HEADLESS=1` opens no editor.
+New worktrees use `<main>/.worktrees/<name>`; existing `.claude/worktrees/<name>` trees remain in place
+and are supported by the same commands. `make wt-one` / `make wt-one-rm` affect only this repo;
+`make wt-new` / `make wt-rm` affect the workspace set. Use `REPOS="..."` to narrow a set.
+
+Codex hooks require project trust and a review in `/hooks`. They use the same formatting,
+scoped verification, and stash guard as Claude. Do not bypass hook trust or sandbox permissions.
+Use the installed CLI's own local authentication; this setup expects Codex's ChatGPT login.
+
+## Code Review Rules
+
+- Flag consequential correctness, security, and compatibility defects in changed code; leave mechanical checks to CI.
+- Check worktree and repository boundaries: preserve existing work, isolate ports/data, and avoid operating on the main checkout by mistake.
+- Preserve this repo's generated-file, contract, and release invariants in `.agents/repo-notes.md`.
+- Configure Claude and native Codex GitHub reviews independently. Codex feedback is advisory initially;
+  it must remain visible in feedback reports without being treated as a required completion signal.

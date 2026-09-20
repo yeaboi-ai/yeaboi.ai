@@ -1,7 +1,7 @@
 """AI-adoption footprint — detect how much of a team's tracked work shows an AI-tool trace.
 
 # See docs: "Architecture" — engines are UI-free pipelines; this is a sub-analysis
-# of team-analysis mode (CLAUDE.md "REQUIRED: Surface Parity" — the TUI/CLI/MCP are
+# of team-analysis mode (AGENTS.md "REQUIRED: Surface Parity" — the TUI/CLI/MCP are
 # thin adapters over ``analysis/engine.py:run_team_analysis``, which calls into here).
 
 What this does

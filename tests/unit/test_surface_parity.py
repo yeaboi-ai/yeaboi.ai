@@ -23,7 +23,7 @@ reasoned ``HIDDEN_PARAMS`` entry, or be a universal injection seam
 MCP tool grows it too.
 
 How to fix a failure: update ``CAPABILITIES``/``PARAM_PAIRS`` below, or record
-an ``Exempt(reason)``/``HIDDEN_PARAMS`` entry — see CLAUDE.md
+an ``Exempt(reason)``/``HIDDEN_PARAMS`` entry — see AGENTS.md
 "REQUIRED: Surface Parity".
 """
 
@@ -42,7 +42,7 @@ PLUGIN_SKILLS_DIR = REPO_ROOT / "claude-plugin" / "yeaboi" / "skills"
 
 _HOW_TO = (
     "Fix: update CAPABILITIES/PARAM_PAIRS in tests/unit/test_surface_parity.py, or record an "
-    "Exempt(reason)/HIDDEN_PARAMS entry — see CLAUDE.md 'REQUIRED: Surface Parity'."
+    "Exempt(reason)/HIDDEN_PARAMS entry — see AGENTS.md 'REQUIRED: Surface Parity'."
 )
 
 

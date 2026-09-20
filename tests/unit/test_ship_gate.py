@@ -72,7 +72,7 @@ class TestTheGateIsFast:
         _, fast = _recipe("test-fast")
         _, slow = _recipe("test-slow")
         assert "$(PYTEST_PARALLEL)" in fast
-        # tests/integration/test_repl.py monkeypatches ten-plus names and CLAUDE.md
+        # tests/integration/test_repl.py monkeypatches ten-plus names and AGENTS.md
         # forbids editing it, so the slow lane stays serial deliberately.
         assert "$(PYTEST_PARALLEL)" not in slow
 

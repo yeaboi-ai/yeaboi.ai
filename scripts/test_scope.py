@@ -660,7 +660,7 @@ INERT: tuple[str, ...] = (
     ".claude/",
     "README.md",
     "SECURITY.md",
-    "CLAUDE.md",
+    "AGENTS.md",
     ".gitignore",
     ".github/dependabot.yml",
 )

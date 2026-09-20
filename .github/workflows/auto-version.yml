@@ -323,6 +323,9 @@ jobs:
           claude_args: >-
             --model ${{ vars.YEABOI_MODEL_FAST || 'claude-haiku-4-5-20251001' }} --max-turns 15 --allowedTools "Bash,Read,Edit,Write"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             You are the release-versioning bot for this repository. Pull request #${{ github.event.pull_request.number }} is open; decide whether and how to bump the project version. The version lives only in pyproject.toml. Changelog-only mode: ${{ steps.guard.outputs.changelog_only || 'false' }}.
 
             Follow these steps exactly:

@@ -65,7 +65,7 @@ def carried_action_items_for_session(
     replace the name bias with a hard filter. Graceful — returns an empty tuple
     when there's no prior retro or on any read error (never raises).
 
-    # See CLAUDE.md — Retro action-item carry-forward loop (mirrors Performance 1:1s)
+    # See AGENTS.md — Retro action-item carry-forward loop (mirrors Performance 1:1s)
     """
     if selection is not None and not selection.wants("retro"):
         logger.info("retro: carry-forward switched off for session=%s", session_id)

@@ -1,0 +1,2 @@
+# Subscription-backed local development; model choice stays with the user.
+forced_login_method = "chatgpt"

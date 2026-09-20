@@ -225,7 +225,7 @@ class TestEveryRegistryEntryIsReachable:
 
 
 class TestTheMcpServerTestFollowsItsTools:
-    """`mcp/tools_<mode>.py` belongs to the mode, per CLAUDE.md — but the test
+    """`mcp/tools_<mode>.py` belongs to the mode, per AGENTS.md — but the test
     that drives every tool end-to-end through `create_app` lives in one file
     owned by `platform`. Without this coupling a tools change ran the mode's
     tests and never the server's, and `test_surface_parity.py` (in ALWAYS) only

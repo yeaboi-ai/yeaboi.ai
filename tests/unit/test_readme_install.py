@@ -41,7 +41,7 @@ class TestDocumentedCommands:
         pipx uses the interpreter it is running under and will not fetch one
         unless asked, so it may only appear with --python or --fetch-missing-python.
         """
-        for path in (README, ROOT / "CLAUDE.md"):
+        for path in (README, ROOT / "AGENTS.md"):
             for line in path.read_text(encoding="utf-8").splitlines():
                 if "pipx install" not in line:
                     continue

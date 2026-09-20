@@ -1,7 +1,7 @@
 """Team-analysis engine — the headless pipeline behind the TUI Analysis mode.
 
 # See docs: "Architecture" — engines are UI-free pipelines; the TUI, CLI and
-# MCP server are thin adapters over them (CLAUDE.md "REQUIRED: Surface Parity").
+# MCP server are thin adapters over them (AGENTS.md "REQUIRED: Surface Parity").
 
 Design choice — standalone pipeline, not a LangGraph node (same rationale as
 ``standup/engine.py``): the analysis is a deterministic gather step

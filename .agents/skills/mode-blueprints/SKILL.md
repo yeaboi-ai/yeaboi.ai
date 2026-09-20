@@ -163,7 +163,7 @@ are vendored/adapted from Headroom (Apache-2.0; provenance in each module header
 mechanisms (identical/subset re-reads, write read-backs, `cat -n` scaffolding, stale reads —
 stale is sized but never summed into the recoverable headline), the second structurally detects
 volatile-shaped content (UUID/ISO-8601/JWT-shape/hex-hash — counts only, no samples) in
-prompt-prefix files (CLAUDE.md). Waste is priced at the window's input-token-weighted blended
+prompt-prefix files (AGENTS.md). Waste is priced at the window's input-token-weighted blended
 rate via `pricing.lookup_price`. The TUI pages share one threaded-engine loop in
 `ui/mode_select/_agents.py`. The three cards live in `_AGENT_CARDS`, spliced into the Solo menu by
 `_SOLO_MENU_CARDS` and never merged into `_MODE_CARDS` (welcome tests pin exact renders and

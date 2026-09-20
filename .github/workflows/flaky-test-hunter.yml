@@ -137,6 +137,9 @@ jobs:
           claude_args: >-
             --model ${{ vars.YEABOI_MODEL_FAST || 'claude-haiku-4-5-20251001' }} --max-turns 15 --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Bash(gh issue comment:*),Read,Grep"
           prompt: |
+            Read AGENTS.md and .agents/repo-notes.md before starting.
+            Read the relevant .agents/skills/*/SKILL.md for any area you touch.
+
             The deterministic flake detector just ran on `main`. Its results are in
             two files at the repo root:
             - `flaky.json` — {"reruns": N, "flaky": ["Class::test", ...]} tests that
