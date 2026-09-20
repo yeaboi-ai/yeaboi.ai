@@ -2,6 +2,26 @@
   "schema_version": 2,
   "entries": [
     {
+      "version": "4.2.0",
+      "date": "2026-09-20",
+      "headline": "Plans choose their sources and reference each other",
+      "summary": "Control which integrations each plan consults, and reference other plans and runs in the planning conversation. Attach text files to bring context directly into the discussion with structured references and citations.",
+      "highlights": [
+        {
+          "text": "Choose which integrations each plan can access",
+          "areas": ["planning"]
+        },
+        {
+          "text": "Reference other plans and runs in conversation",
+          "areas": ["planning"]
+        },
+        {
+          "text": "Attach text files to bring context into planning",
+          "areas": ["planning"]
+        }
+      ]
+    },
+    {
       "version": "4.1.0",
       "date": "2026-09-12",
       "headline": "Plan in conversation and choose run context",
