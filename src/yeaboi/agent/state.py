@@ -2495,6 +2495,12 @@ class ScrumState(_RequiredState, total=False):
     # free-text project label it is filed under. Carried, not yet consumed.
     context_scope: str
     project_label: str
+    # The connection keys this plan may consult (jira, github, …). Absent =
+    # unrestricted; [] = none. Not ProjectAnalysis.integrations, which is what
+    # the analysed product integrates with. Read by the agent node's tool
+    # binding, the tool node's guard and the analyzer's direct reads.
+    # See docs: "Memory & State" — StateGraph keeps only declared keys
+    session_integrations: list[str]
 
     # Project analysis — structured synthesis of intake answers.
     # Set once by project_analyzer node; no reducer needed (single value).
@@ -2693,6 +2699,13 @@ class ScrumState(_RequiredState, total=False):
     # chat_images: screenshots attached to the current post-pipeline chat message;
     # consumed by the agent node (call_model) on the next invoke, then cleared.
     chat_images: list[str]
+    # The rendered text of a turn's @-references and attached files (see
+    # agent/chat_refs.py). Same two channels as the images: pasted_context
+    # accumulates through intake for the analyzer, chat_context is consumed by
+    # the agent node on the next invoke, then cleared. Stored history stays
+    # the person's own words.
+    pasted_context: list[str]
+    chat_context: list[str]
 
     # Review loop
     # See docs: "Guardrails" — human-in-the-loop pattern

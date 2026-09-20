@@ -156,6 +156,7 @@ class TestPlanningRoomWire:
             "title",
             "project_label",
             "tags",
+            "integrations",
             "stage",
             "intake_mode",
             "opening",
@@ -230,7 +231,7 @@ class TestContextWire:
     def test_scope_dict_keys_are_pinned(self):
         from yeaboi.context.scope import ContextScope
 
-        assert list(ContextScope().to_dict()) == ["sources", "window", "projects", "tags", "limits"]
+        assert list(ContextScope().to_dict()) == ["sources", "window", "projects", "tags", "limits", "sessions"]
 
     def test_options_keys_are_pinned(self):
         from dataclasses import fields

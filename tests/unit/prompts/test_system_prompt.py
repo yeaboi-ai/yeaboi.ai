@@ -83,3 +83,17 @@ class TestSystemPromptStructure:
         from yeaboi.prompts import get_system_prompt as imported_fn
 
         assert imported_fn() == get_system_prompt()
+
+
+class TestIntegrationsLine:
+    def test_default_is_unchanged(self):
+        assert "Integrations enabled" not in get_system_prompt()
+        assert get_system_prompt(None) == get_system_prompt()
+
+    def test_a_list_names_the_enabled_set(self):
+        prompt = get_system_prompt(["jira", "github"])
+        assert prompt.startswith(get_system_prompt())
+        assert "Integrations enabled for this plan: jira, github." in prompt
+
+    def test_an_empty_list_says_none(self):
+        assert "Integrations enabled for this plan: none." in get_system_prompt([])

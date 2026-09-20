@@ -41,6 +41,17 @@ class TestConstants:
         assert FEEDBACK_TYPES == ("Bug", "Feature", "Improvement", "Other")
 
 
+class TestSafeAttachmentName:
+    def test_keeps_the_basename_only(self):
+        assert feedback.safe_attachment_name("../../etc/passwd", "f.txt") == "passwd"
+        assert feedback.safe_attachment_name("C:\\Users\\me\\app.log", "f.txt") == "app.log"
+
+    def test_blank_falls_back(self):
+        assert feedback.safe_attachment_name("", "f.txt") == "f.txt"
+        assert feedback.safe_attachment_name(None, "f.txt") == "f.txt"
+        assert len(feedback.safe_attachment_name("x" * 300, "f.txt")) == 120
+
+
 class TestIssueTitle:
     def test_prefixes_type(self):
         assert issue_title("Bug", "crash on resize") == "[Bug] crash on resize"

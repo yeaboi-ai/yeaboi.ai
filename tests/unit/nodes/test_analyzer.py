@@ -909,6 +909,71 @@ class TestProjectAnalyzerConfluenceContext:
         assert "confluence_context" not in result
 
 
+class TestIntegrationGates:
+    """A plan restricted to some integrations skips the analyzer's own reads of the others."""
+
+    def _run(self, monkeypatch, repo="https://github.com/acme/app", **extras):
+        fake_response = MagicMock()
+        fake_response.content = VALID_ANALYSIS_JSON
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = fake_response
+        monkeypatch.setattr("yeaboi.agent.nodes.get_llm", lambda **kw: mock_llm)
+        calls: list[str] = []
+        monkeypatch.setattr(
+            "yeaboi.agent.nodes._scan_repo_context",
+            lambda _qs: calls.append("repo") or (None, {"name": "Repository", "status": "skipped", "detail": "t"}),
+        )
+        monkeypatch.setattr(
+            "yeaboi.agent.nodes._fetch_confluence_context",
+            lambda _qs, **kw: calls.append("confluence") or (None, {"name": "Confluence", "status": "skipped"}),
+        )
+        monkeypatch.setattr(
+            "yeaboi.agent.nodes._fetch_notion_context",
+            lambda _qs, **kw: calls.append("notion") or (None, {"name": "Notion", "status": "skipped"}),
+        )
+        qs = make_completed_questionnaire()
+        qs.answers[17] = repo
+        state = {"messages": [HumanMessage(content="continue")], "questionnaire": qs, **extras}
+        return project_analyzer(state), calls
+
+    def test_a_local_checkout_scans_whatever_the_plan_allows(self, monkeypatch):
+        _result, calls = self._run(monkeypatch, repo="/Users/me/app", session_integrations=["confluence"])
+        assert calls == ["repo", "confluence"]
+
+    def test_confluence_and_notion_are_skipped_when_not_enabled(self, monkeypatch):
+        result, calls = self._run(monkeypatch, session_integrations=["github"])
+        assert calls == ["repo"]
+        statuses = {row["name"]: row for row in result["context_sources"]}
+        assert statuses["Confluence"]["status"] == "skipped"
+        assert statuses["Confluence"]["detail"] == "not enabled for this plan"
+        assert statuses["Notion"]["status"] == "skipped"
+
+    def test_the_repository_scan_is_skipped_when_github_is_not_enabled(self, monkeypatch):
+        result, calls = self._run(monkeypatch, session_integrations=["confluence", "notion"])
+        assert calls == ["confluence", "notion"]
+        statuses = {row["name"]: row for row in result["context_sources"]}
+        assert statuses["Repository"]["detail"] == "not enabled for this plan"
+
+    def test_absent_key_reads_everything(self, monkeypatch):
+        _result, calls = self._run(monkeypatch)
+        assert calls == ["repo", "confluence", "notion"]
+
+    def test_pasted_context_joins_the_user_context(self, monkeypatch):
+        captured: dict = {}
+
+        def mock_prompt(answers_block, team_size, velocity_per_sprint, **kwargs):
+            captured.update(kwargs)
+            return "mock prompt"
+
+        monkeypatch.setattr("yeaboi.agent.nodes.get_analyzer_prompt", mock_prompt)
+        monkeypatch.setattr(
+            "yeaboi.agent.nodes._load_user_context",
+            lambda: ("# SCRUM notes", {"name": "SCRUM.md", "status": "success", "detail": "t"}),
+        )
+        self._run(monkeypatch, pasted_context=["Reference 1 (link): spec — https://s"])
+        assert captured["user_context"] == "# SCRUM notes\n\nReference 1 (link): spec — https://s"
+
+
 class TestLoadUserContext:
     """Tests for the _load_user_context() helper function."""
 

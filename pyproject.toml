@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yeaboi"
-version = "4.1.0"
+version = "4.2.0"
 description = "yeaboi — an AI Scrum Master for your terminal: sprint planning, standups, retros, planning poker, 1:1s and delivery reports, plus cost and security posture for your AI coding agents."
 readme = "README.md"
 requires-python = ">=3.10"

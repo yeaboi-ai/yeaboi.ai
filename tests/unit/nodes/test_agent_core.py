@@ -825,6 +825,54 @@ class TestMakeCallModel:
         fn({"messages": [HumanMessage(content="hi")]})
         mock_llm.bind_tools.assert_called_once_with([fake_tool])
 
+    def test_call_model_binds_only_the_allowed_integrations(self, monkeypatch):
+        from langchain_core.tools import tool
+
+        @tool
+        def jira_read_board(x: str) -> str:
+            """Jira."""
+            return x
+
+        @tool
+        def notion_read_page(x: str) -> str:
+            """Notion."""
+            return x
+
+        @tool
+        def estimate_complexity(x: str) -> str:
+            """Local."""
+            return x
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = AIMessage(content="ok")
+        monkeypatch.setattr("yeaboi.agent.nodes.get_llm", lambda: mock_llm)
+        fn = make_call_model([jira_read_board, notion_read_page, estimate_complexity])
+        fn({"messages": [HumanMessage(content="hi")], "session_integrations": ["jira"]})
+        mock_llm.bind_tools.assert_called_once_with([jira_read_board, estimate_complexity])
+        system = mock_llm.invoke.call_args[0][0][0]
+        assert "Integrations enabled for this plan: jira" in system.content
+        # A second set binds again; the same set is cached.
+        fn({"messages": [HumanMessage(content="hi")], "session_integrations": ["jira"]})
+        fn({"messages": [HumanMessage(content="hi")]})
+        assert mock_llm.bind_tools.call_count == 2
+        assert mock_llm.bind_tools.call_args[0][0] == [jira_read_board, notion_read_page, estimate_complexity]
+
+    def test_chat_context_is_attached_then_cleared(self, monkeypatch):
+        mock_bound_llm = MagicMock()
+        mock_bound_llm.invoke.return_value = AIMessage(content="Ok")
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_bound_llm
+        monkeypatch.setattr("yeaboi.agent.nodes.get_llm", lambda: mock_llm)
+
+        fn = make_call_model([])
+        state = {"messages": [HumanMessage(content="Plan this")], "chat_context": ["Reference 1 (link): spec"]}
+        out = fn(state)
+        sent = mock_bound_llm.invoke.call_args[0][0]
+        assert sent[-1].content == "Plan this\n\n---\nReferences and files:\nReference 1 (link): spec"
+        assert state["messages"][0].content == "Plan this"  # stored history untouched
+        assert out["chat_context"] == []
+
     def test_returned_function_invokes_bound_llm(self, monkeypatch):
         """The returned node function must call the bound LLM (not the raw LLM)."""
         mock_bound_llm = MagicMock()
@@ -975,3 +1023,56 @@ class TestIsLlmRateLimited:
         from yeaboi.agent.nodes import _is_llm_rate_limited
 
         assert _is_llm_rate_limited(RuntimeError("boom")) is False
+
+
+class TestMakeToolNode:
+    """The tools node refuses a call whose integration the plan did not enable."""
+
+    def _tools(self):
+        from langchain_core.tools import tool
+
+        @tool
+        def jira_read_board(x: str) -> str:
+            """Jira."""
+            return f"board {x}"
+
+        @tool
+        def notion_read_page(x: str) -> str:
+            """Notion."""
+            return f"page {x}"
+
+        return [jira_read_board, notion_read_page]
+
+    def _run(self, calls, integrations=None):
+        """Run the node inside a one-node graph: ToolNode needs the graph's runtime config."""
+        from langgraph.graph import START, StateGraph
+
+        from yeaboi.agent.nodes import make_tool_node
+        from yeaboi.agent.state import ScrumState
+
+        graph = StateGraph(ScrumState)
+        graph.add_node("tools", make_tool_node(self._tools()))
+        graph.add_edge(START, "tools")
+        graph.add_edge("tools", END)
+        state = {"messages": [HumanMessage(content="go"), AIMessage(content="", tool_calls=calls)]}
+        if integrations is not None:
+            state["session_integrations"] = integrations
+        out = graph.compile().invoke(state)
+        return [m for m in out["messages"] if isinstance(m, ToolMessage)]
+
+    def test_absent_key_runs_everything(self):
+        calls = [{"name": "notion_read_page", "args": {"x": "1"}, "id": "c1"}]
+        assert [m.content for m in self._run(calls)] == ["page 1"]
+
+    def test_an_excluded_tool_call_is_refused_and_the_rest_run(self):
+        calls = [
+            {"name": "notion_read_page", "args": {"x": "1"}, "id": "c1"},
+            {"name": "jira_read_board", "args": {"x": "2"}, "id": "c2"},
+        ]
+        by_id = {m.tool_call_id: m for m in self._run(calls, integrations=["jira"])}
+        assert by_id["c1"].content == "notion is not enabled for this plan"
+        assert by_id["c2"].content == "board 2"
+
+    def test_an_empty_list_refuses_every_integration(self):
+        calls = [{"name": "jira_read_board", "args": {"x": "2"}, "id": "c2"}]
+        assert self._run(calls, integrations=[])[0].content == "jira is not enabled for this plan"

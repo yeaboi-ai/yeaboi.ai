@@ -1366,6 +1366,7 @@ class TestContextScopeColumn:
                 "projects": [],
                 "tags": [],
                 "limits": {},
+                "sessions": [],
             }
             assert store.load_config("s1")["context_scope"]["sources"] == ["retro"]
             # a config-form save never resets it

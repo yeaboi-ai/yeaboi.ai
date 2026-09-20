@@ -240,3 +240,34 @@ class TestSelectionFor:
         assert selection.scope is None
         monkeypatch.setattr("yeaboi.config.get_last_context_scope", lambda mode: "stanup")
         assert res.selection_for("standup", None, db_path=seeded["db"]).scope is None
+
+
+class TestPinnedSessions:
+    """A pin is always read: past the window, under a switched-off source, ahead of the newest."""
+
+    def test_a_pinned_session_bypasses_the_window(self, db, seeded):
+        from yeaboi.context.scope import SessionRef
+
+        old = seeded["old"]
+        scope = ContextScope(window=Window(kind="sprints", count=1), sessions=(SessionRef("standup", "p1", old),))
+        ids = resolve_scope(scope, today=TODAY, db_path=db).ids("standup")
+        assert ids is not None and ids[0] == old and seeded["new"] in ids
+
+    def test_a_pinned_run_reads_under_an_excluded_source(self, db, seeded):
+        from yeaboi.context.scope import SessionRef
+
+        scope = ContextScope(sources=frozenset({"plan"}), sessions=(SessionRef("retro", "p1", seeded["retro"]),))
+        selection = resolve_scope(scope, today=TODAY, db_path=db)
+        assert selection.ids("retro") == (seeded["retro"],)
+        assert selection.ids("standup") == ()
+        assert selection.ids("plan") is None
+
+    def test_pins_come_first_and_count(self, db, seeded):
+        from yeaboi.context.scope import SessionRef
+
+        scope = ContextScope(
+            window=Window(kind="sprints", count=1), sessions=(SessionRef("standup", "p1", seeded["old"]),)
+        )
+        preview = preview_scope(scope, today=TODAY, db_path=db, rows=True)
+        assert preview.counts["standup"] == 2
+        assert preview.rows["standup"][0].key == seeded["old"]

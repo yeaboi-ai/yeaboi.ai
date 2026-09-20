@@ -141,6 +141,17 @@ def _replace_chips(text: str) -> str:
     return CHIP_RE.sub(lambda m: f"(screenshot {m.group(1)})", text)
 
 
+def safe_attachment_name(raw, fallback: str) -> str:
+    """The sender's own filename, stripped of any path; ``fallback`` when blank."""
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    name = str(raw or "").strip()
+    if not name:
+        return fallback
+    name = PureWindowsPath(PurePosixPath(name).name).name
+    return name[:120] or fallback
+
+
 def feedback_attachment_kind(mime: str) -> str | None:
     """``"image"``, ``"text"``, or ``None`` for a mime the form does not accept."""
     if mime in FEEDBACK_IMAGE_MIMES:

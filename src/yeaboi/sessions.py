@@ -226,6 +226,9 @@ _SCALAR_KEYS = {
     "analysis_profile_id",
     "context_scope",
     "project_label",
+    "session_integrations",
+    "pasted_context",
+    "chat_context",
 }
 
 

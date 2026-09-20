@@ -94,6 +94,51 @@ TOOL_RISK: dict[str, ToolRisk] = {
 }
 
 
+#: Which connection a tool talks to — the key a plan's ``session_integrations``
+#: names. ``""`` is a local or LLM helper that no integration gates. Every
+#: TOOL_RISK row has one (tests/unit/tools/test_risk.py asserts it).
+TOOL_INTEGRATION: dict[str, str] = {
+    name: (
+        "github"
+        if name.startswith("github_")
+        else "azdevops"
+        if name.startswith("azdevops_")
+        else "jira"
+        if name.startswith("jira_")
+        else "linear"
+        if name.startswith("linear_")
+        else "trello"
+        if name.startswith("trello_")
+        else "confluence"
+        if name.startswith("confluence_")
+        else "notion"
+        if name.startswith("notion_")
+        else ""
+    )
+    for name in TOOL_RISK
+}
+
+
+def integration_of(tool_name: str) -> str:
+    """The connection key ``tool_name`` needs, or ``""`` when none does."""
+    return TOOL_INTEGRATION.get(tool_name, "")
+
+
+def tool_allowed(tool_name: str, integrations=None) -> bool:
+    """Whether a plan restricted to ``integrations`` (None = unrestricted) may run ``tool_name``."""
+    if integrations is None:
+        return True
+    key = integration_of(tool_name)
+    return not key or key in set(integrations)
+
+
+def allowed_tools(tools, integrations=None) -> list:
+    """The subset of ``tools`` a plan restricted to ``integrations`` may bind; everything when None."""
+    if integrations is None:
+        return list(tools)
+    return [tool for tool in tools if tool_allowed(tool.name, integrations)]
+
+
 def high_risk_tool_names() -> frozenset[str]:
     """Return the names of all WRITE tools — the human-review gate set."""
     return frozenset(name for name, risk in TOOL_RISK.items() if risk is ToolRisk.WRITE)

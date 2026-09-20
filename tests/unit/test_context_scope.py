@@ -170,6 +170,65 @@ class TestSpecGrammar:
         assert parse_context_spec(scope.to_spec()) == scope
 
 
+class TestPinnedSessions:
+    """``sessions`` pins runs by name: always read, whatever the window or the labels say."""
+
+    def test_sessions_round_trip_dict_and_spec(self):
+        from yeaboi.context.scope import SessionRef
+
+        scope = ContextScope(
+            sources=frozenset({"standup"}),
+            sessions=(SessionRef("planning", "new-1"), SessionRef("performance", "", "1on1:12")),
+        )
+        assert ContextScope.from_dict(scope.to_dict()) == scope
+        assert scope.to_dict()["sessions"] == [
+            {"mode": "planning", "session_id": "new-1", "run_id": ""},
+            {"mode": "performance", "session_id": "", "run_id": "1on1:12"},
+        ]
+        assert scope.to_spec() == "standup session=planning:new-1,performance::1on1:12"
+        assert parse_context_spec(scope.to_spec()) == scope
+
+    def test_a_pin_makes_the_source_wanted(self):
+        from yeaboi.context.scope import SessionRef
+
+        scope = ContextScope(sources=frozenset(), sessions=(SessionRef("retro", "p1", "3"),))
+        assert scope.wants("retro") and not scope.wants("standup")
+        assert scope.pinned("retro") == ("3",) and scope.pinned("standup") == ()
+        assert not scope.incognito and scope.narrows
+        assert parse_context_spec(scope.to_spec()) == scope
+
+    def test_pins_survive_from_dict_junk(self):
+        scope = ContextScope.from_dict(
+            {
+                "sessions": [
+                    {"mode": "nope", "session_id": "x"},
+                    {"mode": "standup", "run_id": "4"},
+                    "garbage",
+                    {"mode": "standup", "run_id": "4"},
+                    {"mode": "planning"},
+                ]
+            }
+        )
+        assert [ref.to_dict() for ref in scope.sessions] == [{"mode": "standup", "session_id": "", "run_id": "4"}]
+        assert ContextScope.from_dict({"sessions": "x"}).sessions == ()
+
+    def test_pin_sessions_merges_without_duplicates(self):
+        from yeaboi.context.scope import SessionRef, pin_sessions
+
+        pinned = pin_sessions(None, [SessionRef("planning", "a")])
+        again = pin_sessions(pinned, [SessionRef("planning", "a"), SessionRef("standup", "", "2")])
+        assert [r.key for r in again.sessions] == ["a", "2"]
+        assert pinned.sources is None
+
+    def test_a_bad_pin_spec_raises(self):
+        from yeaboi.context.scope import SessionRef
+
+        with pytest.raises(ValueError, match="mode:session_id"):
+            SessionRef.from_spec("planning")
+        with pytest.raises(ValueError, match="unknown session mode"):
+            parse_context_spec("all session=ship:x")
+
+
 class TestCoerce:
     def test_accepts_every_twin(self):
         scope = ContextScope(sources=frozenset({"plan"}))

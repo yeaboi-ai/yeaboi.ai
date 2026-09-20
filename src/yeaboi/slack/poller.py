@@ -360,7 +360,7 @@ def run_poll(
                 # Read the gap BEFORE this poll's own row lands, and prune after
                 # — otherwise the comparison is against ourselves.
                 gap = _gap_notice(store, moment)
-                store.prune()
+                store.prune(now=moment)
 
             return _finish(
                 PollResult(

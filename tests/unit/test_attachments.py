@@ -6,9 +6,13 @@ import pytest
 
 from yeaboi.ui.shared._attachments import (
     MAX_IMAGE_BYTES,
+    MAX_TEXT_FILE_BYTES,
+    TEXT_FILE_SUFFIXES,
     UNSUPPORTED_MESSAGE,
     chip_text,
+    file_chip_text,
     handle_ctrl_v,
+    referenced_files,
     referenced_images,
     unsupported_notice,
 )
@@ -104,3 +108,25 @@ def test_unsupported_notice_sends_standard_message():
     notices = []
     unsupported_notice(notices.append)
     assert notices == [UNSUPPORTED_MESSAGE]
+
+
+class TestReferencedFiles:
+    """``[file #N]`` chips pick the text files a turn sends — the images rule, for files."""
+
+    def test_only_the_chipped_files_travel(self):
+        files = ["/a/notes.md", "/a/log.txt"]
+        assert referenced_files("read [file #2]", files) == ["/a/log.txt"]
+        assert referenced_files("[file #1] [file #2] [file #1]", files) == files
+
+    def test_no_chip_no_file(self):
+        assert referenced_files("nothing", ["/a/notes.md"]) == []
+        assert referenced_files("[file #3]", ["/a/notes.md"]) == []
+        assert referenced_files("[file #1]", []) == []
+
+    def test_an_image_chip_is_not_a_file_chip(self):
+        assert referenced_files("[image #1]", ["/a/notes.md"]) == []
+
+    def test_chip_and_limits(self):
+        assert file_chip_text(2) == "[file #2]"
+        assert MAX_TEXT_FILE_BYTES == 200 * 1024
+        assert TEXT_FILE_SUFFIXES == (".md", ".txt", ".csv", ".json", ".log")

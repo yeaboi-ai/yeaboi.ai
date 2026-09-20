@@ -12,6 +12,10 @@ Only rules that apply to EVERY LLM call belong here. Node-specific detail
 by the relevant nodes (story_writer, sprint_planner) when they run.
 """
 
+from __future__ import annotations
+
+from collections.abc import Sequence
+
 # ── System prompt ─────────────────────────────────────────────────────
 #
 # The prompt is a private module constant so it isn't part of the public API.
@@ -89,8 +93,11 @@ the problem first.
 """
 
 
-def get_system_prompt() -> str:
+def get_system_prompt(integrations: Sequence[str] | None = None) -> str:
     """Return the Scrum Master system prompt.
+
+    ``integrations`` (None = unrestricted) appends the one line naming which
+    external systems this plan may consult; the default prompt is unchanged.
 
     # See docs: "Prompt Construction" — ARC framework
     # This is a factory function (not a bare constant) for two reasons:
@@ -104,4 +111,10 @@ def get_system_prompt() -> str:
     Returns:
         The system prompt string for the Scrum Master persona.
     """
-    return _SYSTEM_PROMPT
+    if integrations is None:
+        return _SYSTEM_PROMPT
+    named = ", ".join(integrations) if integrations else "none"
+    return (
+        f"{_SYSTEM_PROMPT}\n\nIntegrations enabled for this plan: {named}. "
+        "Do not consult any other external system; say so if asked to."
+    )

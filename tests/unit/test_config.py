@@ -1361,6 +1361,15 @@ class TestLastContextScope:
         cfg.set_last_context_scope("standup", None)
         assert cfg.get_last_context_scope("standup") is None
 
+    def test_pins_are_never_remembered(self, monkeypatch, tmp_path):
+        from yeaboi import config as cfg
+
+        monkeypatch.setattr(cfg, "get_config_file", lambda: tmp_path / ".env")
+        monkeypatch.delenv("YEABOI_CONTEXT_PLANNING", raising=False)
+        scope = {"sources": ["plan"], "sessions": [{"mode": "planning", "session_id": "s1", "run_id": ""}]}
+        cfg.set_last_context_scope("planning", scope)
+        assert cfg.get_last_context_scope("planning") == {"sources": ["plan"], "sessions": []}
+
     def test_bad_json_and_non_dict_read_as_none(self, monkeypatch):
         from yeaboi.config import get_last_context_scope
 

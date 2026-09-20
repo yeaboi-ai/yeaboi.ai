@@ -42,7 +42,7 @@ from yeaboi.agent.chat_session import (
     replay,
 )
 from yeaboi.agent.plan_view import pipeline_progress, plan_view, section_status
-from yeaboi.app._context_body import read_context
+from yeaboi.app._context_body import read_context, read_integrations
 from yeaboi.app.chats import ChatBusyError, LiveChat, UnknownChatError, described_as
 from yeaboi.app.router import HTTPError, Request, Response, json_response
 from yeaboi.mcp.runtime import to_jsonable
@@ -78,6 +78,7 @@ SESSION_VIEW_KEYS: tuple[str, ...] = (
     "title",
     "project_label",
     "tags",
+    "integrations",
     "stage",
     "intake_mode",
     "opening",
@@ -103,6 +104,8 @@ _END = object()
 #: keyed the same way but private to the terminal's clipboard path.
 _EXT_FOR_IMAGE = {"image/png": ".png", "image/jpeg": ".jpg"}
 
+ATTACHMENT_KINDS = ("image", "text")
+
 
 # ------------------------------------------------------------- the sessions
 
@@ -126,6 +129,8 @@ def create(app, request: Request) -> Response:
     from yeaboi.context.resolve import scope_for
 
     scope, project_label, tags = read_context(payload)
+    integrations = read_integrations(payload)
+    refs = _read_refs(payload)
     # The rule every run shares: an absent scope inherits the last one used.
     scope = scope_for("planning", scope)
     chat = app.chats.create(
@@ -136,9 +141,13 @@ def create(app, request: Request) -> Response:
         context_scope=scope.to_dict() if scope is not None else None,
         project_label=project_label,
         title=title,
+        integrations=integrations,
+        refs=refs,
     )
     app.chats.save(chat)
     _label(app, chat, project_label=project_label, tags=tags, scope=scope, defaults=True)
+    if refs and app.chats.link_sessions(chat, refs) is not None:
+        app.chats.save(chat)
     return json_response(_view(app, chat), code=201)
 
 
@@ -177,10 +186,15 @@ def update(app, request: Request) -> Response:
     ``project_label`` clears the label; ``context`` null or blank clears the
     scope.
     """
+    from dataclasses import replace
+
+    from yeaboi.context.scope import coerce_scope
+
     payload = request.json()
     chat = _chat(app, request)
     scope, project_label, tags = read_context(payload)
-    touched = {key for key in ("context", "project_label", "tags") if key in payload}
+    integrations = read_integrations(payload)
+    touched = {key for key in ("context", "project_label", "tags", "integrations") if key in payload}
     # A running turn ends by replacing the state wholesale; a write that
     # slipped in beside it would be lost, so the update waits its turn.
     _hold_turn(chat)
@@ -189,7 +203,21 @@ def update(app, request: Request) -> Response:
             app.chats.rename(chat, _read_title(payload))
         if touched:
             state = chat.session.state
+            if "integrations" in touched:
+                if integrations is None:
+                    state.pop("session_integrations", None)
+                else:
+                    state["session_integrations"] = list(integrations)
             if "context" in touched:
+                raw_context = payload.get("context")
+                if scope is not None and isinstance(raw_context, dict) and "sessions" not in raw_context:
+                    # A picker that predates pins must not drop them.
+                    try:
+                        stored = coerce_scope(state.get("context_scope") or None)
+                    except (TypeError, ValueError):
+                        stored = None
+                    if stored is not None and stored.sessions:
+                        scope = replace(scope, sessions=stored.sessions)
                 if scope is None:
                     state.pop("context_scope", None)
                 else:
@@ -220,6 +248,7 @@ def update(app, request: Request) -> Response:
             "project_label": labels["project_label"],
             "tags": labels["tags"],
             "context": labels["scope"],
+            "integrations": chat.session.state.get("session_integrations"),
         }
     )
 
@@ -245,13 +274,15 @@ def send(app, request: Request) -> Response:
     The first line names the operation id, so the client can cancel the turn
     through ``POST /api/ops/{op_id}/cancel`` before the reply lands.
 
-    ``images`` is the composer's attachment list, in order. Which of them
-    actually travel is decided here by :func:`referenced_images`, so deleting
-    an ``[image #N]`` chip detaches its image on this surface exactly as it
-    does in the terminal — one implementation of the rule, not two.
+    ``images``, ``files`` and ``refs`` are the composer's whole lists, in
+    order. Which of them actually travel is decided here from the surviving
+    ``[image #N]``, ``[file #N]`` and ``[ref #N]`` chips, so deleting a chip
+    detaches its attachment on this surface exactly as it does in the
+    terminal — one implementation of the rule, not two.
     """
+    from yeaboi.agent.chat_refs import referenced_refs
     from yeaboi.ui.session.chat._commands import is_slash_verb
-    from yeaboi.ui.shared._attachments import referenced_images
+    from yeaboi.ui.shared._attachments import referenced_files, referenced_images
 
     payload = request.json()
     text = str(payload.get("text", ""))
@@ -259,15 +290,26 @@ def send(app, request: Request) -> Response:
         raise HTTPError(400, "slash commands run on the client — see GET /api/chat/commands")
     attachments = [str(name) for name in payload.get("images") or []]
     images = referenced_images(text, attachments) if attachments else []
+    refs = referenced_refs(text, _read_refs(payload))
     chat = _chat(app, request)
+    files = _confined_files(referenced_files(text, _read_paths(payload, "files")), chat.session_id)
     if chat.session.awaiting in ADVANCE_STAGES:
         raise HTTPError(409, "the plan is being built — POST …/advance runs the next step")
-    logger.info("Chat turn start: session=%s len=%d images=%d", chat.session_id, len(text), len(images))
-    return _stream(
-        app,
-        chat,
-        lambda on_event, cancel: chat.session.reply(text, on_event, images=images, cancel=cancel),
+    logger.info(
+        "Chat turn start: session=%s len=%d images=%d files=%d refs=%d",
+        chat.session_id,
+        len(text),
+        len(images),
+        len(files),
+        len(refs),
     )
+
+    def run(on_event, cancel):
+        if refs:
+            app.chats.link_sessions(chat, refs)
+        return chat.session.reply(text, on_event, images=images, files=files, refs=refs, cancel=cancel)
+
+    return _stream(app, chat, run)
 
 
 def advance(app, request: Request) -> Response:
@@ -423,13 +465,14 @@ def size(app, request: Request) -> Response:
 
 
 def attach(app, request: Request) -> Response:
-    """``POST /api/chat/sessions/{session_id}/attachments`` — keep one pasted image.
+    """``POST /api/chat/sessions/{session_id}/attachments`` — keep one pasted image or text file.
 
     The window reads the clipboard itself (the terminal cannot), so what
     arrives here is bytes rather than a paste event. Everything downstream is
     the terminal's: the same size ceiling, the same attachments directory, and
     the same ``[image #N]`` chip, which is what makes the image detachable by
-    deleting text.
+    deleting text. ``kind: "text"`` keeps a small text file the same way,
+    behind a ``[file #N]`` chip.
     """
     import base64
     import binascii
@@ -440,6 +483,11 @@ def attach(app, request: Request) -> Response:
 
     chat = _chat(app, request)
     payload = request.json()
+    kind = str(payload.get("kind", "image") or "image")
+    if kind not in ATTACHMENT_KINDS:
+        raise HTTPError(400, f"unknown attachment kind {kind!r} — one of {', '.join(ATTACHMENT_KINDS)}")
+    if kind == "text":
+        return _attach_text(chat, payload)
     mime = str(payload.get("mime", "image/png"))
     if mime not in _EXT_FOR_IMAGE:
         raise HTTPError(400, f"unsupported image type {mime!r} — paste a PNG or a JPEG")
@@ -461,6 +509,40 @@ def attach(app, request: Request) -> Response:
         raise HTTPError(500, "Could not save pasted image") from None
     logger.info("image pasted: session=%s bytes=%d mime=%s", chat.session_id, len(data), mime)
     return json_response({"path": str(path), "chip": chip_text(index)})
+
+
+def _attach_text(chat: LiveChat, payload: dict) -> Response:
+    """One text file, kept under the session's attachments directory behind a ``[file #N]`` chip."""
+    import uuid
+    from pathlib import Path
+
+    from yeaboi.feedback import safe_attachment_name
+    from yeaboi.paths import get_attachments_dir
+    from yeaboi.ui.shared._attachments import MAX_TEXT_FILE_BYTES, TEXT_FILE_SUFFIXES, file_chip_text
+
+    text = payload.get("text")
+    if not isinstance(text, str):
+        raise HTTPError(400, "text must be a string")
+    if not text.strip():
+        raise HTTPError(400, "no text was sent")
+    name = safe_attachment_name(payload.get("name"), "file.txt")
+    suffix = Path(name).suffix.lower()
+    if suffix not in TEXT_FILE_SUFFIXES:
+        raise HTTPError(400, f"unsupported file type {suffix or name!r} — one of {', '.join(TEXT_FILE_SUFFIXES)}")
+    data = text.encode("utf-8")
+    if len(data) > MAX_TEXT_FILE_BYTES:
+        raise HTTPError(413, f"File too large ({len(data) / 1024:.0f} KB, max {MAX_TEXT_FILE_BYTES // 1024} KB)")
+    index = int(payload.get("index", 1))
+    path = get_attachments_dir(chat.session_id) / f"file-{uuid.uuid4().hex[:8]}-{name}"
+    try:
+        path.write_bytes(data)
+    except OSError as exc:
+        logger.error("failed to save attached file to %s: %s", path, exc)
+        raise HTTPError(500, "Could not save the file") from None
+    logger.info("file attached: session=%s name=%s bytes=%d", chat.session_id, name, len(data))
+    return json_response(
+        {"path": str(path), "chip": file_chip_text(index), "kind": "text", "name": name, "bytes": len(data)}
+    )
 
 
 # ----------------------------------------------------------------- the plan
@@ -577,6 +659,8 @@ def _view(app, chat: LiveChat) -> dict:
         ),
         "project_label": labels["project_label"],
         "tags": labels["tags"],
+        # None = unrestricted (a plan from before the key, or a client that sent none).
+        "integrations": state.get("session_integrations"),
         "stage": chat.session.awaiting,
         "intake_mode": state.get("_intake_mode", ""),
         # Non-empty only until the description has been sent as the first turn.
@@ -620,6 +704,56 @@ def _label(app, chat: LiveChat, **kwargs) -> None:
         app.chats.set_labels(chat, **kwargs)
     except Exception:  # noqa: BLE001 — logged, the conversation goes on
         logger.warning("Labels for %s were not written", chat.session_id, exc_info=True)
+
+
+def _read_refs(payload: dict) -> list[dict]:
+    """The body's ``refs``, validated; 400 names the first bad one."""
+    from yeaboi.agent.chat_refs import validate_refs
+
+    try:
+        return validate_refs(payload.get("refs"))
+    except ValueError as exc:
+        raise HTTPError(400, f"refs: {exc}") from None
+
+
+def _read_paths(payload: dict, key: str) -> list[str]:
+    raw = payload.get(key) or []
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        raise HTTPError(400, f"{key} must be a list of attachment paths")
+    return raw
+
+
+def _confined_files(paths: list[str], session_id: str) -> list[str]:
+    """The attached text files a turn may read: under this session's attachments directory, of an allowed type.
+
+    A path from anywhere else is dropped with a warning rather than read —
+    the model would see its contents.
+    """
+    from pathlib import Path
+
+    from yeaboi.paths import get_attachments_dir
+    from yeaboi.redaction import log_safe
+    from yeaboi.ui.shared._attachments import TEXT_FILE_SUFFIXES
+
+    if not paths:
+        return []
+    root = get_attachments_dir(session_id).resolve()
+    kept: list[str] = []
+    for entry in paths:
+        try:
+            resolved = Path(entry).resolve()
+            resolved.relative_to(root)
+        except (OSError, ValueError):
+            logger.warning("chat: dropped a file outside %s: %s", root, log_safe(entry))
+            continue
+        if resolved.suffix.lower() not in TEXT_FILE_SUFFIXES:
+            logger.warning("chat: dropped %s — not a text attachment", log_safe(resolved.name))
+            continue
+        if not resolved.is_file():
+            logger.warning("chat: dropped %s — no longer there", log_safe(resolved.name))
+            continue
+        kept.append(str(resolved))
+    return kept
 
 
 def _profile_exists(profile_id: str) -> bool:

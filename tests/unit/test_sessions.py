@@ -215,6 +215,32 @@ class TestSoloStateRoundTrip:
         assert loaded["solo"] is True
 
 
+class TestSessionIntegrationsRoundTrip:
+    """The plan-level keys the room writes survive a save and a load unchanged."""
+
+    def test_the_three_keys_round_trip(self, tmp_path):
+        state = {
+            "messages": [],
+            "session_integrations": ["jira", "github"],
+            "pasted_context": ["Reference: PROJ-1"],
+            "chat_context": [],
+        }
+        with SessionStore(tmp_path / "sessions.db") as store:
+            store.create_session("s1", "Test")
+            store.save_state("s1", state)
+            loaded = store.load_state("s1")
+        assert loaded["session_integrations"] == ["jira", "github"]
+        assert loaded["pasted_context"] == ["Reference: PROJ-1"]
+        assert loaded["chat_context"] == []
+
+    def test_an_absent_key_stays_absent(self, tmp_path):
+        with SessionStore(tmp_path / "sessions.db") as store:
+            store.create_session("s1", "Test")
+            store.save_state("s1", {"messages": []})
+            loaded = store.load_state("s1")
+        assert "session_integrations" not in loaded
+
+
 class TestListSessionsFilters:
     """The additive kwargs the cross-mode recent list reads through."""
 

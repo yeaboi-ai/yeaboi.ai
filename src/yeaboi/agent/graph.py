@@ -24,13 +24,13 @@ from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import ToolNode
 
 from yeaboi.agent.nodes import (
     feature_generator,
     feature_skip,
     human_review,
     make_call_model,
+    make_tool_node,
     project_analyzer,
     project_intake,
     route_entry,
@@ -182,7 +182,9 @@ def create_graph(
     # REPL session unexpectedly.
     # See docs: "Tools" — tool types and ToolNode
     # See docs: "Guardrails" — graceful degradation on tool failure
-    graph.add_node("tools", ToolNode(list(tools), handle_tool_errors=True))
+    # make_tool_node wraps it in the per-plan integration guard: a tool whose
+    # integration the plan did not enable answers with a refusal instead.
+    graph.add_node("tools", make_tool_node(list(tools)))
 
     # "human_review" node — the human-in-the-loop step for high-risk writes.
     # Reached when should_continue detects an external write tool call

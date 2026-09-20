@@ -8,7 +8,7 @@ ship silently ungated; a removed tool rots the registry loudly.
 # See docs: "Guardrails" — human-in-the-loop pattern (Tool layer)
 """
 
-from yeaboi.tools.risk import TOOL_RISK, ToolRisk, high_risk_tool_names
+from yeaboi.tools.risk import TOOL_INTEGRATION, TOOL_RISK, ToolRisk, allowed_tools, high_risk_tool_names, tool_allowed
 
 from .test_tools_registry import _discover_all_tools
 
@@ -58,3 +58,41 @@ class TestHighRiskDerivation:
         assert "read_codebase" not in high_risk_tool_names()
         assert "github_read_repo" not in high_risk_tool_names()
         assert "azdevops_read_board" not in high_risk_tool_names()
+
+
+class TestIntegrationTable:
+    def test_every_tool_names_its_integration(self):
+        assert set(TOOL_INTEGRATION) == set(TOOL_RISK)
+        assert TOOL_INTEGRATION["jira_create_epic"] == "jira"
+        assert TOOL_INTEGRATION["github_read_repo"] == "github"
+        assert TOOL_INTEGRATION["azdevops_read_board"] == "azdevops"
+        assert TOOL_INTEGRATION["read_codebase"] == ""
+        assert TOOL_INTEGRATION["estimate_complexity"] == ""
+
+    def test_every_external_tool_has_an_integration(self):
+        local = {n for n, key in TOOL_INTEGRATION.items() if not key}
+        assert local == {
+            "read_codebase",
+            "read_local_file",
+            "load_project_context",
+            "detect_bank_holidays",
+            "estimate_complexity",
+            "generate_acceptance_criteria",
+            "analyze_team_history",
+            "compare_plan_to_actuals",
+        }
+
+    def test_tool_allowed(self):
+        assert tool_allowed("jira_read_board", None)
+        assert tool_allowed("jira_read_board", ["jira"])
+        assert not tool_allowed("jira_read_board", ["notion"])
+        assert tool_allowed("read_codebase", [])
+
+    def test_allowed_tools_filters_by_name(self):
+        class T:
+            def __init__(self, name):
+                self.name = name
+
+        tools = [T("jira_read_board"), T("notion_read_page"), T("read_codebase")]
+        assert [t.name for t in allowed_tools(tools, ["notion"])] == ["notion_read_page", "read_codebase"]
+        assert allowed_tools(tools, None) == tools

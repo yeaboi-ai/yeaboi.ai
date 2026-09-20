@@ -356,6 +356,30 @@ class TestChatSessionSend:
         assert graph.invocations[0]["chat_images"] == ["shot-1.png"]
         assert "pasted_images" not in graph.invocations[0]
 
+    def test_refs_and_files_ride_the_intake_channel_during_intake(self, monkeypatch):
+        monkeypatch.setattr("yeaboi.agent.chat_refs.resolve_ref", lambda ref, **kw: "spec — https://s")
+        session, graph = self._session(state={"questionnaire": _done_qs(), "pasted_context": ["earlier"]})
+        self._events(session, "see [ref #1]", refs=[{"kind": "link", "label": "spec", "url": "https://s"}])
+        assert graph.invocations[0]["pasted_context"] == ["earlier", "Reference 1 (link): spec — https://s"]
+        assert "chat_context" not in graph.invocations[0]
+
+    def test_refs_ride_the_chat_channel_after_intake(self, tmp_path):
+        notes = tmp_path / "n.md"
+        notes.write_text("keep")
+        state = {
+            "questionnaire": _done_qs(completed=True, awaiting_confirmation=False),
+            "project_analysis": _ANALYSIS,
+            "_epic_reviewed": True,
+            "features": [1],
+            "stories": [1],
+            "tasks": [1],
+            "sprints": [1],
+        }
+        session, graph = self._session(state=state)
+        self._events(session, "[file #1]", files=[str(notes)])
+        assert graph.invocations[0]["chat_context"] == ["File 1 (n.md):\nkeep"]
+        assert "pasted_context" not in graph.invocations[0]
+
     def test_the_returned_state_replaces_the_session_state(self):
         session, _graph = self._session([{"project_analysis": _ANALYSIS}])
         self._events(session)
@@ -395,6 +419,11 @@ class TestChatSessionAwaiting:
 class TestStartState:
     def test_solo_seeds_the_declared_key(self):
         assert start_state("a todo app", intake_mode="smart", solo=True)["solo"] is True
+
+    def test_integrations_seed_the_declared_key(self):
+        assert start_state("x", intake_mode="smart", integrations=["jira"])["session_integrations"] == ["jira"]
+        assert start_state("x", intake_mode="smart", integrations=[])["session_integrations"] == []
+        assert "session_integrations" not in start_state("x", intake_mode="smart")
 
     def test_a_team_conversation_leaves_the_key_absent(self):
         assert "solo" not in start_state("a todo app", intake_mode="smart")
