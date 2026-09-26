@@ -77,7 +77,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         if: steps.dedupe.outputs.skip == 'false'
       - run: uv python install 3.11
         if: steps.dedupe.outputs.skip == 'false'
@@ -86,7 +86,7 @@ jobs:
 
       - name: Diagnose and remediate with Claude
         if: steps.dedupe.outputs.skip == 'false'
-        uses: anthropics/claude-code-action@e2a4b761cd77a1138a5b41410eda9b28581f9bcd # v1.0.196
+        uses: anthropics/claude-code-action@8cf3482550831fb35a4fc3fbf7ca139cf8028b4c # v1.0.233
         env:
           GH_TOKEN: ${{ github.token }}
           FAILED_RUN_ID: ${{ steps.dedupe.outputs.run_id }}
