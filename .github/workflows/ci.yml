@@ -118,7 +118,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       # The floor, not a middle version: 3.10 is where a version difference can
       # actually break, and running the required job there costs nothing extra.
       # The `--python` pin is mandatory — runners ship 3.12/3.13 preinstalled and
@@ -155,7 +155,7 @@ jobs:
         python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install ${{ matrix.python }}
       - run: uv sync --extra dev --python ${{ matrix.python }}
       - env:
@@ -174,7 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.10
       - run: uv sync --extra dev --python 3.10
       - run: uv run python -c "import sys; assert sys.version_info[:2] == (3, 10), sys.version"
@@ -198,7 +198,7 @@ jobs:
     if: needs.scope.outputs.eval == 'true'
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.11
       - run: uv sync --extra dev
       - run: make eval
@@ -209,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.11
       - run: uv sync --extra dev
       - run: make lint
@@ -252,7 +252,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.11
       - run: uv sync --extra dev
       - run: make format-check
@@ -268,7 +268,7 @@ jobs:
     if: needs.scope.outputs.package == 'true'
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.11
       # The assertion lives in scripts/check_wheel_deps.py so `make package-check`
       # runs the identical check locally — inline here, the only way to fail it was
@@ -305,7 +305,7 @@ jobs:
         with:
           # Full history so gitleaks can scan all commits on a PR, not just the tip.
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.11
       - run: uv sync --extra dev
       - name: SAST + dependency audit

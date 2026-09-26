@@ -199,7 +199,7 @@ jobs:
           # The released tree, resolved once in `check`. Testing one commit and
           # shipping another is the whole failure this pinning exists to stop.
           ref: ${{ needs.check.outputs.sha }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.12
       - run: uv sync --extra dev
       - run: make lint
@@ -217,7 +217,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.check.outputs.sha }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv python install 3.12
       # No stamping step: the final IS the version in pyproject.toml. That is the
       # whole reason the rc suffix never gets committed.
@@ -256,7 +256,7 @@ jobs:
             echo "Release v${{ needs.check.outputs.version }}." > /tmp/notes/notes.md
           fi
       - name: Create tag and GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: v${{ needs.check.outputs.version }}
           name: v${{ needs.check.outputs.version }}
