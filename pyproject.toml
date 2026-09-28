@@ -100,7 +100,7 @@ charts = ["matplotlib>=3.8"]
 # MCP server — expose yeaboi's modes as tools to AI coding agents
 # (Claude Code, Cursor, Codex CLI, VS Code, …). Official python-sdk, v1 line;
 # v2 is a pre-release with breaking API changes, so the <2 pin is load-bearing.
-mcp = ["mcp>=1.9,<2"]
+mcp = ["mcp>=1.9,<3"]
 # Cloudflare Access tier (YEABOI_SHARE_MODE=access) — verify the Access JWT on
 # every tunnel-borne request locally, against Cloudflare's published signing
 # keys, instead of trusting the edge's header. Lazy-imported in
@@ -122,7 +122,7 @@ dev = [
     # so CI exercises the chart-generation tests
     "matplotlib>=3.8",
     # so CI exercises the MCP server tests
-    "mcp>=1.9,<2",
+    "mcp>=1.9,<3",
     # so the voice tests exercise the real resampling maths — the hand-rolled
     # numpy fake in tests/unit/test_voice.py cannot stand in for np.interp.
     # numpy arrives transitively with faster-whisper at runtime; naming it here
