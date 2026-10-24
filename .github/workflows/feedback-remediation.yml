@@ -90,7 +90,7 @@ jobs:
 
       - name: Triage with Claude
         if: steps.collect.outputs.count != '0'
-        uses: anthropics/claude-code-action@e2a4b761cd77a1138a5b41410eda9b28581f9bcd # v1.0.196
+        uses: anthropics/claude-code-action@aa8a7738e48bf30a40ee499ce818bef081c5ab5e # v1.0.257
         env:
           GH_TOKEN: ${{ github.token }}
         with:
